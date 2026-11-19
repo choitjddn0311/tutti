@@ -1,0 +1,67 @@
+import { Suspense } from "react";
+import Link from "next/link";
+import { JoinRoomForm } from "@/components/room/RoomForms";
+import { Setlist } from "@/components/setlist/Setlist";
+import { ROOM_CODE_RE } from "@/lib/room-auth";
+import { listSongs, requireRoom } from "@/lib/rooms";
+
+export default function RoomPage({ params }: PageProps<"/room/[code]">) {
+  return (
+    <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 px-4 py-8">
+      <Link href="/" className="text-sm text-zinc-500 hover:underline">
+        ← Tutti
+      </Link>
+      <Suspense fallback={<p className="text-zinc-500">불러오는 중…</p>}>
+        {params.then(({ code }) => (
+          <RoomContent code={code} />
+        ))}
+      </Suspense>
+    </main>
+  );
+}
+
+async function RoomContent({ code }: { code: string }) {
+  if (!ROOM_CODE_RE.test(code)) {
+    return <p>존재하지 않는 방 코드입니다.</p>;
+  }
+
+  const auth = await requireRoom(code);
+  if (!auth) {
+    return (
+      <section className="mx-auto flex w-full max-w-sm flex-col gap-4">
+        <h1 className="text-2xl font-semibold">
+          방 <span className="tracking-widest">{code}</span> 입장
+        </h1>
+        <JoinRoomForm code={code} />
+      </section>
+    );
+  }
+
+  const { room, session } = auth;
+  const songs = await listSongs(room.id);
+
+  return (
+    <>
+      <header className="flex flex-wrap items-end justify-between gap-2">
+        <div>
+          <h1 className="text-2xl font-semibold">{room.name}</h1>
+          <p className="text-sm text-zinc-500">
+            방 코드 <span className="font-mono text-base tracking-widest text-zinc-900 dark:text-zinc-100">{room.code}</span>
+          </p>
+        </div>
+        <p className="text-sm text-zinc-600 dark:text-zinc-400">
+          {session.nickname} · {session.instrument}
+        </p>
+      </header>
+      <Setlist
+        code={room.code}
+        songs={songs.map(({ id, title, file_type, page_count }) => ({
+          id,
+          title,
+          file_type,
+          page_count,
+        }))}
+      />
+    </>
+  );
+}
