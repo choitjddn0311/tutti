@@ -67,3 +67,7 @@ end;
 $$;
 
 revoke execute on function public.move_song(uuid, uuid, integer) from public, anon, authenticated;
+
+-- 5) 한 파일은 한 곡에만 연결 (finalize 중복 방지)
+alter table public.songs
+  add constraint songs_file_path_key unique (file_path);

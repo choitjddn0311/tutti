@@ -2,14 +2,7 @@ import "server-only";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { readRoomSession, ROOM_CODE_RE, type RoomSession } from "@/lib/room-auth";
 
-export const SCORES_BUCKET = "scores";
-export const MAX_UPLOAD_BYTES = 20 * 1024 * 1024; // PROJECT.md §4: 파일당 20MB
-export const ALLOWED_MIME: Record<string, { type: "pdf" | "image"; ext: string }> = {
-  "application/pdf": { type: "pdf", ext: "pdf" },
-  "image/png": { type: "image", ext: "png" },
-  "image/jpeg": { type: "image", ext: "jpg" },
-  "image/webp": { type: "image", ext: "webp" },
-};
+export { ALLOWED_MIME, MAX_UPLOAD_BYTES, SCORES_BUCKET } from "@/lib/upload-rules";
 
 export type Room = {
   id: string;

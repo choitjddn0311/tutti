@@ -3,12 +3,13 @@
 import { randomUUID } from "node:crypto";
 import { refresh } from "next/cache";
 import { getServerSupabase } from "@/lib/supabase/server";
+import { requireRoom } from "@/lib/rooms";
 import {
   ALLOWED_MIME,
+  MAX_TITLE_LENGTH,
   MAX_UPLOAD_BYTES,
-  requireRoom,
   SCORES_BUCKET,
-} from "@/lib/rooms";
+} from "@/lib/upload-rules";
 
 type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string };
 
@@ -48,17 +49,31 @@ export async function finalizeUpload(
   const db = getServerSupabase();
   const storage = db.storage.from(SCORES_BUCKET);
 
-  const title = input.title.trim();
-  if (!title || title.length > 100) return { ok: false, error: "곡 제목은 1~100자로 입력하세요." };
-
-  // 다른 방 경로 / 경로 조작 차단
+  // 다른 방 경로 / 경로 조작 차단 (이 검사 전에는 파일을 지우지 않는다)
   const pathRe = new RegExp(`^${room.id}/[0-9a-f-]{36}\\.(pdf|png|jpg|webp)$`);
-  if (!pathRe.test(input.path)) return { ok: false, error: "잘못된 파일 경로입니다." };
+  const pathMatch = pathRe.exec(input.path);
+  if (!pathMatch) return { ok: false, error: "잘못된 파일 경로입니다." };
+
+  // 같은 경로를 두 번 finalize(재시도·중복 제출)해도 곡은 하나만 — 멱등 처리
+  const { data: existing } = await db
+    .from("songs")
+    .select("id")
+    .eq("room_id", room.id)
+    .eq("file_path", input.path)
+    .maybeSingle();
+  if (existing) return { ok: true };
+
+  const title = input.title.trim();
+  if (!title || title.length > MAX_TITLE_LENGTH) {
+    await storage.remove([input.path]);
+    return { ok: false, error: `곡 제목은 1~${MAX_TITLE_LENGTH}자로 입력하세요.` };
+  }
 
   const { data: info, error: infoErr } = await storage.info(input.path);
   if (infoErr || !info) return { ok: false, error: "업로드된 파일을 찾을 수 없습니다." };
   const mime = info.contentType ? ALLOWED_MIME[info.contentType] : undefined;
-  if (!mime || !info.size || info.size > MAX_UPLOAD_BYTES) {
+  // prepareUpload에서 승인한 형식(경로 확장자)과 실제 업로드 형식이 같아야 한다
+  if (!mime || mime.ext !== pathMatch[1] || !info.size || info.size > MAX_UPLOAD_BYTES) {
     await storage.remove([input.path]);
     return { ok: false, error: "지원하지 않는 파일이거나 용량을 초과했습니다." };
   }
@@ -96,6 +111,8 @@ export async function finalizeUpload(
       return { ok: true };
     }
     if (error.code !== "23505") break;
+    // 동시 중복 finalize: file_path 유니크 위반이면 이미 추가된 것
+    if (error.message.includes("songs_file_path_key")) return { ok: true };
   }
   await storage.remove([input.path]);
   return { ok: false, error: "곡을 추가하지 못했습니다." };
@@ -107,14 +124,6 @@ export async function deleteSong(code: string, songId: string): Promise<Result> 
   const { room } = auth;
   const db = getServerSupabase();
 
-  // 현재 곡을 지우면 현재 위치를 초기화 (FK가 current_song_id만 null로 만들기 때문)
-  if (room.current_song_id === songId) {
-    await db
-      .from("rooms")
-      .update({ current_song_id: null, current_page: 1 })
-      .eq("id", room.id);
-  }
-
   const { data, error } = await db
     .from("songs")
     .delete()
@@ -123,7 +132,17 @@ export async function deleteSong(code: string, songId: string): Promise<Result> 
     .select("file_path")
     .maybeSingle();
   if (error) return { ok: false, error: "곡을 삭제하지 못했습니다." };
-  if (data) await db.storage.from(SCORES_BUCKET).remove([data.file_path]);
+
+  if (data) {
+    await db.storage.from(SCORES_BUCKET).remove([data.file_path]);
+    // 현재 곡이 지워졌으면 FK가 current_song_id만 null로 만든다 → 페이지도 초기화.
+    // (삭제 성공 후, 현재 DB 상태 기준으로 조건부 갱신)
+    await db
+      .from("rooms")
+      .update({ current_page: 1 })
+      .eq("id", room.id)
+      .is("current_song_id", null);
+  }
 
   refresh();
   return { ok: true };

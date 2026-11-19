@@ -4,6 +4,13 @@ import { useRef, useState, useTransition } from "react";
 import { deleteSong, finalizeUpload, moveSong, prepareUpload } from "@/app/actions/setlist";
 import { countPdfPages } from "@/lib/pdf";
 import { getBrowserSupabase } from "@/lib/supabase/browser";
+import {
+  ACCEPT_ATTR,
+  ALLOWED_MIME,
+  MAX_TITLE_LENGTH,
+  MAX_UPLOAD_BYTES,
+  SCORES_BUCKET,
+} from "@/lib/upload-rules";
 
 export type SetlistSong = {
   id: string;
@@ -12,8 +19,6 @@ export type SetlistSong = {
   page_count: number;
 };
 
-const MAX_BYTES = 20 * 1024 * 1024;
-const ACCEPT = "application/pdf,image/png,image/jpeg,image/webp";
 
 export function Setlist({ code, songs }: { code: string; songs: SetlistSong[] }) {
   const [error, setError] = useState<string | null>(null);
@@ -108,10 +113,10 @@ function UploadForm({ code, onError }: { code: string; onError: (e: string | nul
     onError(null);
     const file = fileRef.current?.files?.[0];
     if (!file) return onError("파일을 선택하세요.");
-    if (!ACCEPT.split(",").includes(file.type)) {
+    if (!ALLOWED_MIME[file.type]) {
       return onError("PDF, PNG, JPEG, WebP 파일만 올릴 수 있습니다.");
     }
-    if (file.size > MAX_BYTES) return onError("파일은 20MB 이하여야 합니다.");
+    if (file.size > MAX_UPLOAD_BYTES) return onError("파일은 20MB 이하여야 합니다.");
 
     try {
       let pageCount = 1;
@@ -130,14 +135,14 @@ function UploadForm({ code, onError }: { code: string; onError: (e: string | nul
 
       setStatus("업로드 중…");
       const { error } = await getBrowserSupabase()
-        .storage.from("scores")
+        .storage.from(SCORES_BUCKET)
         .uploadToSignedUrl(prep.path, prep.token, file, { contentType: file.type });
       if (error) return onError("업로드에 실패했습니다.");
 
       setStatus("곡 추가 중…");
       const done = await finalizeUpload(code, {
         path: prep.path,
-        title: title.trim() || file.name.replace(/\.[^.]+$/, ""),
+        title: (title.trim() || file.name.replace(/\.[^.]+$/, "")).slice(0, MAX_TITLE_LENGTH),
         pageCount,
       });
       if (!done.ok) return onError(done.error);
@@ -157,10 +162,10 @@ function UploadForm({ code, onError }: { code: string; onError: (e: string | nul
         value={title}
         onChange={(e) => setTitle(e.target.value)}
         placeholder="곡 제목 (비우면 파일 이름)"
-        maxLength={100}
+        maxLength={MAX_TITLE_LENGTH}
         className="h-10 rounded-md border border-zinc-300 bg-transparent px-3 dark:border-zinc-700"
       />
-      <input ref={fileRef} type="file" accept={ACCEPT} required className="text-sm" />
+      <input ref={fileRef} type="file" accept={ACCEPT_ATTR} required className="text-sm" />
       <p className="text-xs text-zinc-500">PDF·PNG·JPEG·WebP, 20MB 이하</p>
       <button
         type="submit"

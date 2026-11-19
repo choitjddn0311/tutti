@@ -6,6 +6,8 @@ let client: SupabaseClient | undefined;
  * 브라우저용 Supabase 클라이언트 (publishable 키).
  * Realtime(Broadcast/Presence) 전용 — 테이블·Storage는 RLS로 차단되어 있으므로
  * 데이터 조회·변경은 서버(Route Handler / Server Action)를 거친다.
+ * 유일한 예외: 서버가 발급한 서명 URL로 악보 파일 1개를 직접 업로드(`uploadToSignedUrl`).
+ * (Vercel 함수 요청 본문 4.5MB 제한 때문 — PROJECT.md §4 업로드 경로)
  */
 export function getBrowserSupabase(): SupabaseClient {
   if (client) return client;
