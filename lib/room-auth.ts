@@ -6,7 +6,7 @@ import {
   timingSafeEqual,
 } from "node:crypto";
 import { promisify } from "node:util";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 
 const scrypt = promisify(scryptCb) as (
   password: string,
@@ -86,6 +86,13 @@ function decode(value: string): RoomSession | null {
   }
 }
 
+async function isHttps(): Promise<boolean> {
+  const h = await headers();
+  const proto = h.get("x-forwarded-proto")?.split(",")[0]?.trim();
+  if (proto) return proto === "https";
+  return h.get("origin")?.startsWith("https://") ?? false;
+}
+
 /** Server Action / Route Handler 에서만 호출 가능 (쿠키 쓰기). */
 export async function setRoomSession(
   code: string,
@@ -97,7 +104,9 @@ export async function setRoomSession(
   };
   (await cookies()).set(cookieName(code), encode(session), {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    // https로 접속했을 때만 Secure (Vercel은 x-forwarded-proto=https).
+    // 같은 와이파이의 폰에서 http://<맥 IP>로 테스트할 때도 쿠키가 저장되도록 프로토콜로 판단한다.
+    secure: await isHttps(),
     sameSite: "lax",
     path: "/",
     maxAge: SESSION_MAX_AGE,

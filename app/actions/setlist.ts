@@ -6,6 +6,7 @@ import { getServerSupabase } from "@/lib/supabase/server";
 import { requireRoom } from "@/lib/rooms";
 import {
   ALLOWED_MIME,
+  MAX_PDF_PAGES,
   MAX_TITLE_LENGTH,
   MAX_UPLOAD_BYTES,
   SCORES_BUCKET,
@@ -14,7 +15,6 @@ import {
 type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string };
 
 const NOT_JOINED = { ok: false, error: "방에 입장한 상태가 아닙니다. 다시 입장하세요." } as const;
-const MAX_PDF_PAGES = 2000;
 
 /** 1단계: 업로드 검증 후 서명 업로드 URL 발급. 파일 본문은 서버를 거치지 않는다. */
 export async function prepareUpload(

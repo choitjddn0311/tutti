@@ -3,6 +3,7 @@
 import { useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { deleteSong, finalizeUpload, moveSong, prepareUpload } from "@/app/actions/setlist";
+import { useRoomRealtime } from "@/components/room/RoomRealtime";
 import { countPdfPages } from "@/lib/pdf";
 import { getBrowserSupabase } from "@/lib/supabase/browser";
 import {
@@ -22,6 +23,7 @@ export type SetlistSong = {
 
 
 export function Setlist({ code, songs }: { code: string; songs: SetlistSong[] }) {
+  const forgetSong = useRoomRealtime()?.forgetSong;
   const [error, setError] = useState<string | null>(null);
   const [busy, startTransition] = useTransition();
 
@@ -67,7 +69,13 @@ export function Setlist({ code, songs }: { code: string; songs: SetlistSong[] })
               <IconButton
                 label="삭제"
                 disabled={busy}
-                onClick={() => run(() => deleteSong(code, song.id))}
+                onClick={() =>
+                  run(async () => {
+                    const r = await deleteSong(code, song.id);
+                    if (r.ok) forgetSong?.(song.id);
+                    return r;
+                  })
+                }
               >
                 ✕
               </IconButton>
