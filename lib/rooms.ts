@@ -96,3 +96,27 @@ export async function getSongWithUrl(
     url: signed.signedUrl,
   };
 }
+
+export type Section = { id: string; label: string; page: number; x: number; y: number };
+
+/** 곡의 섹션 라벨 (페이지 → 위치 순). `requireRoom`을 통과한 roomId로만 호출한다. */
+export async function listSectionsForSong(roomId: string, songId: string): Promise<Section[]> {
+  if (!/^[0-9a-f-]{36}$/i.test(songId)) return [];
+  const db = getServerSupabase();
+  // 곡이 이 방 소속인지 확인 (sections에는 room_id가 없음)
+  const { data: song } = await db
+    .from("songs")
+    .select("id")
+    .eq("id", songId)
+    .eq("room_id", roomId)
+    .maybeSingle();
+  if (!song) return [];
+  const { data, error } = await db
+    .from("sections")
+    .select("id, label, page, x, y")
+    .eq("song_id", songId)
+    .order("page", { ascending: true })
+    .order("y", { ascending: true });
+  if (error) throw new Error("섹션 조회 실패");
+  return data as Section[];
+}

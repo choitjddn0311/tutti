@@ -14,6 +14,8 @@ import { usePathname, useRouter } from "next/navigation";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { setPosition } from "@/app/actions/position";
 import { getBrowserSupabase } from "@/lib/supabase/browser";
+import { MAX_MESSAGE_LENGTH, PRESET_CUES } from "@/lib/upload-rules";
+import { RoomNotices } from "./RoomNotices";
 
 /**
  * Presence에 싣는 내 정보. Supabase Realtime은 클라이언트당 Presence 갱신을 30초에 5회로 제한하고
@@ -38,6 +40,24 @@ export type Position = { songId: string | null; page: number };
 type LeaderPos = { songId: string; page: number; epoch: number; seq: number };
 type PositionEvent = LeaderPos & { from: string };
 type PositionListener = (pos: { songId: string; page: number }) => void;
+
+/** 화면에 잠깐 띄우는 알림: 프리셋 큐·텍스트 메시지·(다른 쪽/곡의) 위치 사인 */
+export type Notice = {
+  id: string;
+  kind: "cue" | "message" | "point";
+  from: string; // 닉네임
+  text: string;
+  songId?: string;
+  page?: number;
+};
+/** 악보 위 위치 사인 (페이지 기준 0~1 정규화 좌표) */
+export type PointSignal = { id: string; from: string; songId: string; page: number; x: number; y: number };
+/** 그렸으면 true (같은 곡·쪽을 보고 있을 때) */
+type PointListener = (p: PointSignal) => boolean;
+type SectionsListener = (songId: string) => void;
+
+const NOTICE_MS = { cue: 3500, message: 6000, point: 4000 } as const;
+const isUnit = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 1;
 
 function isNewer(a: { epoch: number; seq: number }, b: { epoch: number; seq: number }) {
   return a.epoch > b.epoch || (a.epoch === b.epoch && a.seq > b.seq);
@@ -78,6 +98,20 @@ type RoomRealtime = {
    * 다른 곡으로의 이동은 Provider가 직접 처리한다.
    */
   subscribePosition: (cb: PositionListener) => () => void;
+
+  // ---------- 5단계: 사인 ----------
+  notices: Notice[];
+  dismissNotice: (id: string) => void;
+  /** 알림에서 곡 열기 */
+  openSong: (songId: string) => void;
+  sendCue: (cue: string) => void;
+  sendMessage: (text: string) => void;
+  /** 악보 위치 사인 (모두의 화면에 같은 위치로 표시) */
+  sendPoint: (songId: string, page: number, x: number, y: number) => void;
+  subscribePoints: (cb: PointListener) => () => void;
+  /** 섹션을 추가·삭제했음을 알림 → 그 곡을 보는 사람이 다시 불러옴 */
+  notifySectionsChanged: (songId: string) => void;
+  subscribeSections: (cb: SectionsListener) => () => void;
 };
 
 const Ctx = createContext<RoomRealtime | null>(null);
@@ -305,6 +339,67 @@ export function RoomRealtimeProvider({
     sendBroadcast("position_request", { from: latest.current.me.clientId });
   }, [sendBroadcast]);
 
+  // ---------- 사인 (휘발성: DB에 저장하지 않음) ----------
+  const [notices, setNotices] = useState<Notice[]>([]);
+  const pointListeners = useRef(new Set<PointListener>());
+  const sectionListeners = useRef(new Set<SectionsListener>());
+  const noticeTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+
+  const dismissNotice = useCallback((id: string) => {
+    setNotices((list) => list.filter((n) => n.id !== id));
+    const t = noticeTimers.current.get(id);
+    if (t) clearTimeout(t);
+    noticeTimers.current.delete(id);
+  }, []);
+
+  /** 알림 추가. id는 항상 여기서 새로 만든다 (보낸 쪽 id를 쓰면 중복·충돌 시 타이머가 엉킴) */
+  const pushNotice = useCallback(
+    (data: Omit<Notice, "id">) => {
+      const n: Notice = { ...data, id: newClientId() };
+      setNotices((list) => {
+        // 큐는 한 번에 하나만 크게 (새 큐가 이전 큐를 대체), 최대 5개 유지
+        const kept = [...list.filter((x) => n.kind !== "cue" || x.kind !== "cue"), n].slice(-5);
+        // 밀려난 알림의 타이머 정리
+        for (const old of list) {
+          if (!kept.includes(old)) {
+            const t = noticeTimers.current.get(old.id);
+            if (t) clearTimeout(t);
+            noticeTimers.current.delete(old.id);
+          }
+        }
+        return kept;
+      });
+      noticeTimers.current.set(n.id, setTimeout(() => dismissNotice(n.id), NOTICE_MS[n.kind]));
+    },
+    [dismissNotice],
+  );
+
+  useEffect(() => {
+    const timers = noticeTimers.current;
+    return () => timers.forEach((t) => clearTimeout(t));
+  }, []);
+
+  /** 받은(또는 내가 보낸) 위치 사인 처리: 같은 곡을 보는 뷰어가 있으면 그리고, 없으면 알림으로 */
+  const handlePoint = useCallback(
+    (p: PointSignal) => {
+      let shown = false;
+      pointListeners.current.forEach((cb) => {
+        if (cb(p)) shown = true;
+      });
+      if (!shown) {
+        const otherSong = !latest.current.pathname.endsWith(`/song/${p.songId}`);
+        pushNotice({
+          kind: "point",
+          from: p.from,
+          text: otherSong ? `다른 곡 ${p.page}쪽 위치 표시 (탭하면 열기)` : `${p.page}쪽 위치 표시`,
+          songId: p.songId,
+          page: p.page,
+        });
+      }
+    },
+    [pushNotice],
+  );
+
   /** 삭제된 곡을 가리키는 위치를 잊는다 (리더면 요청에 답하는 위치도 비움) */
   const forgetLocal = useCallback((songId: string) => {
     if (latest.current.position.songId === songId) {
@@ -381,6 +476,34 @@ export function RoomRealtimeProvider({
         .on("broadcast", { event: "page_change" }, onPosition)
         .on("broadcast", { event: "song_change" }, onPosition)
         .on("broadcast", { event: "song_deleted" }, onSongDeleted)
+        .on("broadcast", { event: "signal" }, ({ payload }) => {
+          const p = payload as Record<string, unknown> | null;
+          const from = typeof p?.from === "string" ? p.from.slice(0, 20) : "";
+          if (p?.kind === "cue" && typeof p.text === "string" && (PRESET_CUES as readonly string[]).includes(p.text)) {
+            pushNotice({ kind: "cue", from, text: p.text });
+          } else if (
+            p?.kind === "point" &&
+            typeof p.songId === "string" &&
+            Number.isInteger(p.page) &&
+            (p.page as number) >= 1 &&
+            isUnit(p.x) &&
+            isUnit(p.y)
+          ) {
+            // id는 받는 쪽에서 새로 만든다 (보낸 쪽 값 중복 시 React key·타이머 충돌 방지)
+            handlePoint({ id: newClientId(), from, songId: p.songId, page: p.page as number, x: p.x, y: p.y });
+          }
+        })
+        .on("broadcast", { event: "message" }, ({ payload }) => {
+          const p = payload as Record<string, unknown> | null;
+          const text = typeof p?.text === "string" ? p.text.trim().slice(0, MAX_MESSAGE_LENGTH) : "";
+          if (!text) return;
+          const from = typeof p?.from === "string" ? p.from.slice(0, 20) : "";
+          pushNotice({ kind: "message", from, text });
+        })
+        .on("broadcast", { event: "sections_changed" }, ({ payload }) => {
+          const songId = (payload as { songId?: unknown } | null)?.songId;
+          if (typeof songId === "string") sectionListeners.current.forEach((cb) => cb(songId));
+        })
         .on("broadcast", { event: "position_request" }, () => {
           // 리더만 답한다. 같은 순서 번호로 다시 보내므로 이미 맞춰진 사람에게는 영향 없음
           const pos = myPos.current;
@@ -421,7 +544,7 @@ export function RoomRealtimeProvider({
         });
       }
     };
-  }, [roomId, clientId, reconnectTick, setEpoch, syncToLeader, acceptLeaderPos, requestPosition, sendBroadcast, forgetLocal]);
+  }, [roomId, clientId, reconnectTick, setEpoch, syncToLeader, acceptLeaderPos, requestPosition, sendBroadcast, forgetLocal, pushNotice, handlePoint]);
 
   // 내 정보(이름·리더 차수)가 바뀔 때만 다시 track — 자주 부르면 Presence 갱신 제한(30초 5회)에 걸린다
   useEffect(() => {
@@ -512,6 +635,56 @@ export function RoomRealtimeProvider({
     };
   }, []);
 
+  const sendCue = useCallback(
+    (cue: string) => {
+      if (!(PRESET_CUES as readonly string[]).includes(cue)) return;
+      // broadcast는 내게 오지 않으므로(self: false) 내 화면에도 직접 띄운다
+      pushNotice({ kind: "cue", from: nickname, text: cue });
+      sendBroadcast("signal", { kind: "cue", from: nickname, text: cue });
+    },
+    [nickname, pushNotice, sendBroadcast],
+  );
+
+  const sendMessage = useCallback(
+    (raw: string) => {
+      const text = raw.trim().slice(0, MAX_MESSAGE_LENGTH);
+      if (!text) return;
+      pushNotice({ kind: "message", from: nickname, text });
+      sendBroadcast("message", { from: nickname, text });
+    },
+    [nickname, pushNotice, sendBroadcast],
+  );
+
+  const sendPoint = useCallback(
+    (songId: string, page: number, x: number, y: number) => {
+      if (!isUnit(x) || !isUnit(y) || !Number.isInteger(page) || page < 1) return;
+      const signal: PointSignal = { id: newClientId(), from: nickname, songId, page, x, y };
+      handlePoint(signal);
+      sendBroadcast("signal", { kind: "point", ...signal });
+    },
+    [nickname, handlePoint, sendBroadcast],
+  );
+
+  /** 뷰어가 등록: 이 곡·쪽이면 그리고 true를 돌려준다 (그리지 못하면 알림으로 표시됨) */
+  const subscribePoints = useCallback((cb: PointListener) => {
+    pointListeners.current.add(cb);
+    return () => {
+      pointListeners.current.delete(cb);
+    };
+  }, []);
+
+  const notifySectionsChanged = useCallback(
+    (songId: string) => sendBroadcast("sections_changed", { songId }),
+    [sendBroadcast],
+  );
+
+  const subscribeSections = useCallback((cb: SectionsListener) => {
+    sectionListeners.current.add(cb);
+    return () => {
+      sectionListeners.current.delete(cb);
+    };
+  }, []);
+
   const value: RoomRealtime = {
     code,
     me,
@@ -527,7 +700,21 @@ export function RoomRealtimeProvider({
     publishPosition,
     forgetSong,
     subscribePosition,
+    notices,
+    dismissNotice,
+    openSong: (songId: string) => router.push(`/room/${code}/song/${songId}`),
+    sendCue,
+    sendMessage,
+    sendPoint,
+    subscribePoints,
+    notifySectionsChanged,
+    subscribeSections,
   };
 
-  return <Ctx value={value}>{children}</Ctx>;
+  return (
+    <Ctx value={value}>
+      {children}
+      <RoomNotices />
+    </Ctx>
+  );
 }
