@@ -3,7 +3,7 @@
 import { randomInt } from "node:crypto";
 import { redirect } from "next/navigation";
 import { getServerSupabase } from "@/lib/supabase/server";
-import { setRoomSession } from "@/lib/room-auth";
+import { roomListRef, setRoomSession } from "@/lib/room-auth";
 import { findRoomByCode } from "@/lib/rooms";
 
 /** 오류 시 입력값을 돌려줘 폼 리셋 후에도 유지한다. */
@@ -13,7 +13,8 @@ export type FormState =
 
 function fail(form: FormData, error: string): FormState {
   const values: Record<string, string> = {};
-  for (const k of ["code", "name", "nickname", "instrument"]) values[k] = field(form, k);
+  // 방 번호는 비밀번호 역할이라 오류 후 다시 채우지 않는다
+  for (const k of ["name", "nickname", "instrument"]) values[k] = field(form, k);
   return { error, values };
 }
 
@@ -35,7 +36,8 @@ function validateMember(
 }
 
 /**
- * 방 만들기. 비밀번호 없음 (2026-11-21 결정: 첫 화면 방 목록에서 번호로 바로 입장).
+ * 방 만들기. 별도 비밀번호 없이 랜덤 4자리 방 번호가 입장 비밀번호 역할 (2026-11-22 결정).
+ * 첫 화면 목록엔 이름만 보이고, 입장하려면 번호를 입력한다. 만든 사람은 방 안에서 번호를 확인해 공유.
  * 입장 쿠키는 닉네임·악기와 방 ID를 담아 계속 쓴다 (requireRoom).
  */
 export async function createRoom(_prev: FormState, form: FormData): Promise<FormState> {
@@ -62,15 +64,20 @@ export async function createRoom(_prev: FormState, form: FormData): Promise<Form
   redirect(`/room/${created.code}`);
 }
 
-/** 방 번호 + 닉네임·악기로 입장 */
+/** 방 번호 + 닉네임·악기로 입장. 목록에서 고른 경우 ref(목록 참조값)로 그 방의 번호인지 확인 */
 export async function joinRoom(_prev: FormState, form: FormData): Promise<FormState> {
   const code = field(form, "code");
   if (!/^[0-9]{4}$/.test(code)) return fail(form, "방 번호는 숫자 4자리입니다.");
   const member = validateMember(form);
   if ("error" in member) return fail(form, member.error);
 
+  // 방 번호가 입장 비밀번호 역할 (2026-11-22). 목록에서 방을 골랐으면 그 방의 번호와 맞아야 한다
+  const ref = field(form, "ref");
   const room = await findRoomByCode(code);
-  if (!room) return fail(form, "없는 방 번호입니다.");
+  // 없는 번호와 틀린 번호를 같은 안내로 (어느 번호가 존재하는지 알려 주지 않게)
+  if (!room || (ref && roomListRef(room.id) !== ref)) {
+    return fail(form, "방 번호가 맞지 않습니다.");
+  }
 
   await setRoomSession(room.code, { roomId: room.id, ...member });
   redirect(`/room/${room.code}`);

@@ -5,7 +5,7 @@ import { JoinRoomForm } from "@/components/room/RoomForms";
 import { RoomLive } from "@/components/room/RoomLive";
 import { Setlist } from "@/components/setlist/Setlist";
 import { ROOM_CODE_RE } from "@/lib/room-auth";
-import { findRoomByCode, listSongs, requireRoom } from "@/lib/rooms";
+import { listSongs, requireRoom } from "@/lib/rooms";
 
 export default function RoomPage({ params }: PageProps<"/room/[code]">) {
   return (
@@ -31,17 +31,12 @@ async function RoomContent({ code }: { code: string }) {
 
   const auth = await requireRoom(code);
   if (!auth) {
-    let target;
-    try {
-      target = await findRoomByCode(code);
-    } catch {
-      return <p className="text-red-600 dark:text-red-400">방 정보를 불러오지 못했습니다. 새로고침해 보세요.</p>;
-    }
-    if (!target) return <p>존재하지 않는 방 번호입니다.</p>;
+    // 입장 전에는 방 이름·존재 여부를 보여주지 않는다 (방 번호가 입장 비밀번호이므로,
+    // /room/0000~9999를 훑어 '목록의 어느 방이 몇 번인지' 알아내지 못하게). 틀린 번호면 입장 시 같은 안내.
     return (
       <section className="mx-auto flex w-full max-w-sm flex-col gap-4">
         <div>
-          <h1 className="text-2xl font-semibold">{target.name}</h1>
+          <h1 className="text-2xl font-semibold">방 입장</h1>
           <p className="text-sm text-zinc-500">
             방 번호 <span className="font-mono tracking-widest">{code}</span> · 닉네임과 악기를 입력하고 입장하세요
           </p>
@@ -60,7 +55,7 @@ async function RoomContent({ code }: { code: string }) {
         <div>
           <h1 className="text-2xl font-semibold">{room.name}</h1>
           <p className="text-sm text-zinc-500">
-            방 코드 <span className="font-mono text-base tracking-widest text-zinc-900 dark:text-zinc-100">{room.code}</span>
+            방 번호(입장 비밀번호) <span className="font-mono text-base tracking-widest text-zinc-900 dark:text-zinc-100">{room.code}</span>
           </p>
         </div>
         <p className="text-sm text-zinc-600 dark:text-zinc-400">

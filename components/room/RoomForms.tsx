@@ -76,23 +76,34 @@ export function CreateRoomForm() {
   );
 }
 
-/** 방 입장: 번호(목록·링크에서 정해지면 숨김) + 닉네임·악기 */
-export function JoinRoomForm({ code }: { code?: string }) {
+/**
+ * 방 입장: 방 번호(비밀번호 역할) + 닉네임·악기.
+ * - code: 링크(/room/1234)로 들어와 번호를 이미 아는 경우 → 번호 칸 숨김
+ * - roomRef: 첫 화면 목록에서 고른 방 → 번호를 입력해야 하고, 그 방의 번호와 맞아야 입장
+ */
+export function JoinRoomForm({ code, roomRef }: { code?: string; roomRef?: string }) {
   const [state, action, pending] = useActionState(joinRoom, undefined);
   return (
     <form action={action} onSubmit={(e) => saveMember(e.currentTarget)} className="flex flex-col gap-3">
+      {roomRef && <input type="hidden" name="ref" value={roomRef} />}
       {code ? (
         <input type="hidden" name="code" value={code} />
       ) : (
         <input
           name="code"
+          // type=password는 브라우저가 사이트 비밀번호로 저장·자동완성해(다른 방에 옛 번호가 채워짐) 숫자 키패드도 안 뜬다
+          // → 텍스트 칸을 CSS로 가림
+          type="text"
           placeholder="방 번호 (숫자 4자리)"
+          aria-label="방 번호"
           inputMode="numeric"
           pattern="[0-9]{4}"
           maxLength={4}
           required
-          defaultValue={state?.values.code}
-          className={`${input} tracking-widest`}
+          autoComplete="off"
+          style={{ WebkitTextSecurity: "disc" } as React.CSSProperties}
+          autoFocus={!!roomRef}
+          className={`${input} tracking-[0.5em]`}
         />
       )}
       <MemberFields state={state} />

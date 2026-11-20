@@ -6,6 +6,16 @@ const SESSION_MAX_AGE = 60 * 60 * 24 * 30; // 30일
 
 export const ROOM_CODE_RE = /^[0-9]{4}$/;
 
+// ---------- 방 목록 참조값 ----------
+
+/**
+ * 첫 화면 방 목록에서 방을 가리키는 공개 참조값.
+ * 방 번호(=입장 비밀번호 역할)나 방 UUID(=실시간 채널명)를 드러내지 않도록 서버 비밀키로 만든 HMAC 일부를 쓴다.
+ */
+export function roomListRef(roomId: string): string {
+  return createHmac("sha256", secret()).update(`list:${roomId}`).digest("base64url").slice(0, 16);
+}
+
 // ---------- 방 입장 세션 (방별 서명 쿠키) ----------
 
 export type RoomSession = {
