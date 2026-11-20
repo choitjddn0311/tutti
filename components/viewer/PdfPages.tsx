@@ -32,11 +32,19 @@ export default function PdfPages({ url, page, box, onNumPages }: Props) {
     );
   }
 
-  const window3 = [page - 1, page, page + 1].filter((p) => p >= 1 && (!numPages || p <= numPages));
+  // 실제 쪽수를 알기 전에는 페이지를 그리지 않는다 (DB 쪽수가 틀렸을 때 없는 쪽 요청 → pdf.js 예외 방지).
+  // 부모가 page를 당겨오기 전 한 번의 렌더에서도 범위를 넘지 않도록 여기서도 자른다.
+  const current = numPages ? Math.min(Math.max(page, 1), numPages) : 0;
+  const window3 = numPages
+    ? [current - 1, current, current + 1].filter((p) => p >= 1 && p <= numPages)
+    : [];
 
   return (
     <Document
       file={url}
+      // react-pdf 11 기본값(suspense)은 실패를 Error Boundary로 던져 앱 전체가 깨진다.
+      // false로 두면 loading/error/onLoadError로 처리된다 (자식 Page도 상속).
+      suspense={false}
       onLoadSuccess={(pdf) => {
         setNumPages(pdf.numPages);
         onNumPages(pdf.numPages);
@@ -45,7 +53,7 @@ export default function PdfPages({ url, page, box, onNumPages }: Props) {
       loading={<p className="p-6 text-center text-sm text-zinc-500">악보 불러오는 중…</p>}
       className="relative flex h-full w-full items-center justify-center"
     >
-      {box.width > 0 &&
+      {box.width > 0 && box.height > 0 &&
         window3.map((p) => {
           const aspect = aspects[p] ?? 210 / 297; // width / height
           const fitByHeight = box.width / box.height > aspect;
@@ -53,11 +61,11 @@ export default function PdfPages({ url, page, box, onNumPages }: Props) {
             <div
               key={p}
               className={
-                p === page
+                p === current
                   ? "relative bg-white shadow-sm"
                   : "pointer-events-none invisible absolute"
               }
-              aria-hidden={p !== page}
+              aria-hidden={p !== current}
             >
               <Page
                 pageNumber={p}

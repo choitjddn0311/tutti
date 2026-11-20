@@ -71,7 +71,7 @@ export async function getSongWithUrl(
   roomId: string,
   songId: string,
 ): Promise<SongWithUrl | null> {
-  if (!/^[0-9a-f-]{36}$/.test(songId)) return null;
+  if (!/^[0-9a-f-]{36}$/i.test(songId)) return null;
   const db = getServerSupabase();
   const { data, error } = await db
     .from("songs")

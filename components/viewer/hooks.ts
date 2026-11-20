@@ -32,13 +32,15 @@ export function useWakeLock(): boolean {
   useEffect(() => {
     if (!("wakeLock" in navigator)) return;
     let sentinel: WakeLockSentinel | null = null;
+    let pending = false; // 요청 중복 방지 (최초 요청과 visibilitychange가 겹칠 때)
     let cancelled = false;
 
     async function acquire() {
-      if (document.visibilityState !== "visible" || sentinel) return;
+      if (document.visibilityState !== "visible" || sentinel || pending) return;
+      pending = true;
       try {
         const s = await navigator.wakeLock.request("screen");
-        if (cancelled) {
+        if (cancelled || sentinel) {
           void s.release();
           return;
         }
@@ -50,6 +52,8 @@ export function useWakeLock(): boolean {
         });
       } catch {
         setActive(false); // 권한 거부·절전 모드 등
+      } finally {
+        pending = false;
       }
     }
 
