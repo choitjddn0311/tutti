@@ -16,7 +16,7 @@ const CUE_COLOR: Record<string, string> = {
 export function RoomNotices() {
   const rt = useRoomRealtime();
   if (!rt) return null;
-  const { notices, dismissNotice } = rt;
+  const { notices, dismissNotice, openSong } = rt;
   const cue = notices.find((n) => n.kind === "cue");
   const toasts = notices.filter((n) => n.kind !== "cue");
 
@@ -43,7 +43,10 @@ export function RoomNotices() {
             <button
               key={n.id}
               type="button"
-              onClick={() => dismissNotice(n.id)}
+              onClick={() => {
+                dismissNotice(n.id);
+                if (n.kind === "point" && n.songId && n.text.startsWith("다른 곡")) openSong(n.songId);
+              }}
               role="status"
               className="pointer-events-auto max-w-md rounded-full bg-zinc-900/90 px-4 py-2 text-sm text-white shadow-md dark:bg-zinc-100/90 dark:text-zinc-900"
             >

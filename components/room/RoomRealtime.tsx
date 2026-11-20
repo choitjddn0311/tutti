@@ -102,6 +102,8 @@ type RoomRealtime = {
   // ---------- 5단계: 사인 ----------
   notices: Notice[];
   dismissNotice: (id: string) => void;
+  /** 알림에서 곡 열기 */
+  openSong: (songId: string) => void;
   sendCue: (cue: string) => void;
   sendMessage: (text: string) => void;
   /** 악보 위치 사인 (모두의 화면에 같은 위치로 표시) */
@@ -350,10 +352,23 @@ export function RoomRealtimeProvider({
     noticeTimers.current.delete(id);
   }, []);
 
+  /** 알림 추가. id는 항상 여기서 새로 만든다 (보낸 쪽 id를 쓰면 중복·충돌 시 타이머가 엉킴) */
   const pushNotice = useCallback(
-    (n: Notice) => {
-      // 큐는 한 번에 하나만 크게 (새 큐가 이전 큐를 대체)
-      setNotices((list) => [...list.filter((x) => n.kind !== "cue" || x.kind !== "cue"), n].slice(-5));
+    (data: Omit<Notice, "id">) => {
+      const n: Notice = { ...data, id: newClientId() };
+      setNotices((list) => {
+        // 큐는 한 번에 하나만 크게 (새 큐가 이전 큐를 대체), 최대 5개 유지
+        const kept = [...list.filter((x) => n.kind !== "cue" || x.kind !== "cue"), n].slice(-5);
+        // 밀려난 알림의 타이머 정리
+        for (const old of list) {
+          if (!kept.includes(old)) {
+            const t = noticeTimers.current.get(old.id);
+            if (t) clearTimeout(t);
+            noticeTimers.current.delete(old.id);
+          }
+        }
+        return kept;
+      });
       noticeTimers.current.set(n.id, setTimeout(() => dismissNotice(n.id), NOTICE_MS[n.kind]));
     },
     [dismissNotice],
@@ -372,7 +387,14 @@ export function RoomRealtimeProvider({
         if (cb(p)) shown = true;
       });
       if (!shown) {
-        pushNotice({ id: p.id, kind: "point", from: p.from, text: `${p.page}쪽 위치 표시`, songId: p.songId, page: p.page });
+        const otherSong = !latest.current.pathname.endsWith(`/song/${p.songId}`);
+        pushNotice({
+          kind: "point",
+          from: p.from,
+          text: otherSong ? `다른 곡 ${p.page}쪽 위치 표시 (탭하면 열기)` : `${p.page}쪽 위치 표시`,
+          songId: p.songId,
+          page: p.page,
+        });
       }
     },
     [pushNotice],
@@ -457,9 +479,8 @@ export function RoomRealtimeProvider({
         .on("broadcast", { event: "signal" }, ({ payload }) => {
           const p = payload as Record<string, unknown> | null;
           const from = typeof p?.from === "string" ? p.from.slice(0, 20) : "";
-          const id = typeof p?.id === "string" ? p.id.slice(0, 40) : newClientId();
           if (p?.kind === "cue" && typeof p.text === "string" && (PRESET_CUES as readonly string[]).includes(p.text)) {
-            pushNotice({ id, kind: "cue", from, text: p.text });
+            pushNotice({ kind: "cue", from, text: p.text });
           } else if (
             p?.kind === "point" &&
             typeof p.songId === "string" &&
@@ -468,7 +489,8 @@ export function RoomRealtimeProvider({
             isUnit(p.x) &&
             isUnit(p.y)
           ) {
-            handlePoint({ id, from, songId: p.songId, page: p.page as number, x: p.x, y: p.y });
+            // id는 받는 쪽에서 새로 만든다 (보낸 쪽 값 중복 시 React key·타이머 충돌 방지)
+            handlePoint({ id: newClientId(), from, songId: p.songId, page: p.page as number, x: p.x, y: p.y });
           }
         })
         .on("broadcast", { event: "message" }, ({ payload }) => {
@@ -476,8 +498,7 @@ export function RoomRealtimeProvider({
           const text = typeof p?.text === "string" ? p.text.trim().slice(0, MAX_MESSAGE_LENGTH) : "";
           if (!text) return;
           const from = typeof p?.from === "string" ? p.from.slice(0, 20) : "";
-          const id = typeof p?.id === "string" ? p.id.slice(0, 40) : newClientId();
-          pushNotice({ id, kind: "message", from, text });
+          pushNotice({ kind: "message", from, text });
         })
         .on("broadcast", { event: "sections_changed" }, ({ payload }) => {
           const songId = (payload as { songId?: unknown } | null)?.songId;
@@ -617,10 +638,9 @@ export function RoomRealtimeProvider({
   const sendCue = useCallback(
     (cue: string) => {
       if (!(PRESET_CUES as readonly string[]).includes(cue)) return;
-      const id = newClientId();
       // broadcast는 내게 오지 않으므로(self: false) 내 화면에도 직접 띄운다
-      pushNotice({ id, kind: "cue", from: nickname, text: cue });
-      sendBroadcast("signal", { kind: "cue", id, from: nickname, text: cue });
+      pushNotice({ kind: "cue", from: nickname, text: cue });
+      sendBroadcast("signal", { kind: "cue", from: nickname, text: cue });
     },
     [nickname, pushNotice, sendBroadcast],
   );
@@ -629,9 +649,8 @@ export function RoomRealtimeProvider({
     (raw: string) => {
       const text = raw.trim().slice(0, MAX_MESSAGE_LENGTH);
       if (!text) return;
-      const id = newClientId();
-      pushNotice({ id, kind: "message", from: nickname, text });
-      sendBroadcast("message", { id, from: nickname, text });
+      pushNotice({ kind: "message", from: nickname, text });
+      sendBroadcast("message", { from: nickname, text });
     },
     [nickname, pushNotice, sendBroadcast],
   );
@@ -683,6 +702,7 @@ export function RoomRealtimeProvider({
     subscribePosition,
     notices,
     dismissNotice,
+    openSong: (songId: string) => router.push(`/room/${code}/song/${songId}`),
     sendCue,
     sendMessage,
     sendPoint,

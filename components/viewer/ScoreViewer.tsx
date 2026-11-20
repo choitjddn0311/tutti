@@ -62,6 +62,12 @@ export function ScoreViewer({
     if (isLeader && publish) publish(songId, page);
   }, [isLeader, publish, songId, page]);
 
+  /** 지금 보이는 쪽 (콜백에서 최신 값을 읽기 위해) */
+  const pageRef = useRef(page);
+  useEffect(() => {
+    pageRef.current = page;
+  });
+
   // 따라가기: 리더가 이 곡에서 넘기면 같은 쪽으로 (다른 곡 이동은 Provider가 처리)
   const subscribe = rt?.subscribePosition;
   // 실제 쪽수를 알기 전(PDF 로드 전)에는 DB page_count가 틀릴 수 있으므로 자르지 않는다 → onNumPages가 범위를 맞춤
@@ -71,7 +77,10 @@ export function ScoreViewer({
     return subscribe((pos) => {
       if (pos.songId !== songId) return;
       const max = realPagesRef.current;
-      setPage(Math.max(1, max ? Math.min(pos.page, max) : pos.page));
+      const target = Math.max(1, max ? Math.min(pos.page, max) : pos.page);
+      // 리더가 넘기자마자 보낸 위치 사인이 같은 틱에 도착해도 새 쪽 기준으로 판단하도록 즉시 반영
+      pageRef.current = target;
+      setPage(target);
     });
   }, [subscribe, songId]);
 
@@ -83,71 +92,99 @@ export function ScoreViewer({
   const [panelOpen, setPanelOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [sectionError, setSectionError] = useState<string | null>(null);
-  const pageRef = useRef(page);
-  useEffect(() => {
-    pageRef.current = page;
-  });
 
   // 위치 사인 받기: 이 곡의 지금 보는 쪽이면 그리고 true (아니면 Provider가 알림으로 띄움)
   const subscribePoints = rt?.subscribePoints;
   useEffect(() => {
     if (!subscribePoints) return;
-    return subscribePoints((p) => {
+    const timers = new Set<ReturnType<typeof setTimeout>>();
+    const unsubscribe = subscribePoints((p) => {
       if (p.songId !== songId || p.page !== pageRef.current) return false;
       setPoints((list) => [...list.filter((x) => x.id !== p.id), p]);
-      setTimeout(() => setPoints((list) => list.filter((x) => x.id !== p.id)), POINT_MS);
+      const t = setTimeout(() => {
+        timers.delete(t);
+        setPoints((list) => list.filter((x) => x.id !== p.id));
+      }, POINT_MS);
+      timers.add(t);
       return true;
     });
+    return () => {
+      unsubscribe();
+      timers.forEach(clearTimeout);
+    };
   }, [subscribePoints, songId]);
 
   // 다른 사람이 이 곡의 섹션을 바꾸면 다시 불러온다
+  // 섹션 목록 갱신은 요청 순서대로만 반영 (늦게 도착한 옛 응답이 새 목록을 덮지 않게)
+  const sectionsReq = useRef(0);
+  const applySections = useCallback(
+    (req: Promise<Section[] | null>) => {
+      const id = ++sectionsReq.current;
+      return req.then(
+        (list) => {
+          if (list && id === sectionsReq.current) setSections(list);
+        },
+        () => {
+          if (id === sectionsReq.current) setSectionError("섹션을 불러오지 못했습니다.");
+        },
+      );
+    },
+    [],
+  );
+
   const subscribeSections = rt?.subscribeSections;
   useEffect(() => {
     if (!subscribeSections) return;
     return subscribeSections((changed) => {
       if (changed !== songId) return;
-      void getSections(code, songId).then(setSections);
+      void applySections(getSections(code, songId));
     });
-  }, [subscribeSections, songId, code]);
+  }, [subscribeSections, songId, code, applySections]);
 
+  /** shownPage: 오버레이가 그려진(실제로 보이는) 쪽 — 부모 page는 PDF 로드 전 잠깐 범위를 넘을 수 있다 */
   const onPlace = useCallback(
-    (x: number, y: number) => {
+    (x: number, y: number, shownPage: number) => {
       if (mode === "point") {
-        rt?.sendPoint(songId, page, x, y);
+        rt?.sendPoint(songId, shownPage, x, y);
         setMode("none");
       } else if (mode === "section" && pendingLabel) {
         setMode("none");
         setBusy(true);
         setSectionError(null);
-        void addSection(code, { songId, label: pendingLabel, page, x, y })
-          .then((r) => {
-            if (r.ok) {
-              setSections(r.sections);
+        void addSection(code, { songId, label: pendingLabel, page: shownPage, x, y })
+          .then(
+            (r) => {
+              if (!r.ok) return setSectionError(r.error);
               rt?.notifySectionsChanged(songId);
-            } else setSectionError(r.error);
-          })
+              // 저장 후 목록을 다시 읽는다 (요청 순서 보장)
+              return applySections(r.sections ? Promise.resolve(r.sections) : getSections(code, songId));
+            },
+            () => setSectionError("섹션을 저장하지 못했습니다. 연결을 확인하세요."),
+          )
           .finally(() => {
             setBusy(false);
             setPendingLabel(null);
           });
       }
     },
-    [mode, pendingLabel, rt, songId, page, code],
+    [mode, pendingLabel, rt, songId, code, applySections],
   );
 
   const removeSection = useCallback(
     (id: string) => {
       setBusy(true);
       void deleteSection(code, songId, id)
-        .then((r) => {
-          if (r.ok) {
-            setSections(r.sections);
+        .then(
+          (r) => {
+            if (!r.ok) return setSectionError(r.error);
             rt?.notifySectionsChanged(songId);
-          } else setSectionError(r.error);
-        })
+            return applySections(Promise.resolve(r.sections));
+          },
+          () => setSectionError("섹션을 삭제하지 못했습니다. 연결을 확인하세요."),
+        )
         .finally(() => setBusy(false));
     },
-    [code, songId, rt],
+    [code, songId, rt, applySections],
   );
 
   const overlayFor = (p: number) => (

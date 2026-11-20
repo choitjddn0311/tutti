@@ -20,7 +20,8 @@ export function PageOverlay({
   sections: Section[];
   points: PointSignal[];
   mode: PlaceMode;
-  onPlace: (x: number, y: number) => void;
+  /** 탭한 위치(0~1)와 이 오버레이가 그려진 쪽 */
+  onPlace: (x: number, y: number, page: number) => void;
 }) {
   const here = sections.filter((s) => s.page === page);
   const pointsHere = points.filter((p) => p.page === page);
@@ -33,7 +34,7 @@ export function PageOverlay({
         const r = e.currentTarget.getBoundingClientRect();
         if (r.width <= 0 || r.height <= 0) return;
         const clamp = (v: number) => Math.min(1, Math.max(0, v));
-        onPlace(clamp((e.clientX - r.left) / r.width), clamp((e.clientY - r.top) / r.height));
+        onPlace(clamp((e.clientX - r.left) / r.width), clamp((e.clientY - r.top) / r.height), page);
       }}
       data-testid="page-overlay"
     >

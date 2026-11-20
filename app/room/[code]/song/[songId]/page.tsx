@@ -24,7 +24,8 @@ async function SongContent({ code, songId }: { code: string; songId: string }) {
 
   const [song, sections] = await Promise.all([
     getSongWithUrl(auth.room.id, songId),
-    listSectionsForSong(auth.room.id, songId),
+    // 섹션은 부가 정보 — 실패해도 악보는 보여준다
+    listSectionsForSong(auth.room.id, songId).catch(() => []),
   ]);
   if (!song) {
     return (

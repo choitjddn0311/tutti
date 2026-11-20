@@ -13,9 +13,12 @@ const isUnit = (v: number) => Number.isFinite(v) && v >= 0 && v <= 1;
 export async function addSection(
   code: string,
   input: { songId: string; label: string; page: number; x: number; y: number },
-): Promise<Result<{ sections: Section[] }>> {
+): Promise<Result<{ sections: Section[] | null }>> {
   const auth = await requireRoom(code);
   if (!auth) return NOT_JOINED;
+  if (typeof input?.label !== "string" || typeof input.songId !== "string") {
+    return { ok: false, error: "잘못된 요청입니다." };
+  }
   const label = input.label.trim();
   if (!label || label.length > MAX_SECTION_LABEL) {
     return { ok: false, error: `섹션 이름은 1~${MAX_SECTION_LABEL}자로 입력하세요.` };
@@ -28,11 +31,13 @@ export async function addSection(
   const db = getServerSupabase();
   const { data: song } = await db
     .from("songs")
-    .select("id")
+    .select("id, file_type")
     .eq("id", input.songId)
     .eq("room_id", auth.room.id)
     .maybeSingle();
   if (!song) return { ok: false, error: "곡을 찾을 수 없습니다." };
+  // 이미지 곡은 1쪽뿐. PDF는 DB page_count가 실제와 다를 수 있어(브라우저가 센 값) MAX_PDF_PAGES로만 제한
+  if (song.file_type === "image" && input.page !== 1) return { ok: false, error: "잘못된 페이지입니다." };
 
   const { error } = await db.from("sections").insert({
     song_id: input.songId,
@@ -42,7 +47,9 @@ export async function addSection(
     y: input.y,
   });
   if (error) return { ok: false, error: "섹션을 저장하지 못했습니다." };
-  return { ok: true, sections: await listSectionsForSong(auth.room.id, input.songId) };
+  // 저장은 성공했으므로 목록 재조회가 실패해도 ok (클라이언트가 다시 불러옴) — 실패로 보고하면 중복 추가된다
+  const sections = await listSectionsForSong(auth.room.id, input.songId).catch(() => null);
+  return { ok: true, sections };
 }
 
 export async function deleteSection(
