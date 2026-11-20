@@ -49,3 +49,6 @@ supabase/.branches
 # 문서 (로컬 전용, 커밋하지 않음)
 *.md
 docs/
+
+# Playwright MCP 산출물
+.playwright-mcp/
