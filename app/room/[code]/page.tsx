@@ -5,7 +5,7 @@ import { JoinRoomForm } from "@/components/room/RoomForms";
 import { RoomLive } from "@/components/room/RoomLive";
 import { Setlist } from "@/components/setlist/Setlist";
 import { ROOM_CODE_RE } from "@/lib/room-auth";
-import { listSongs, requireRoom } from "@/lib/rooms";
+import { findRoomByCode, listSongs, requireRoom } from "@/lib/rooms";
 
 export default function RoomPage({ params }: PageProps<"/room/[code]">) {
   return (
@@ -26,16 +26,21 @@ async function RoomContent({ code }: { code: string }) {
   // 쿠키 세션 만료 확인에 현재 시각을 쓰므로 요청 시점 렌더링으로 고정
   await connection();
   if (!ROOM_CODE_RE.test(code)) {
-    return <p>존재하지 않는 방 코드입니다.</p>;
+    return <p>존재하지 않는 방 번호입니다.</p>;
   }
 
   const auth = await requireRoom(code);
   if (!auth) {
+    const target = await findRoomByCode(code);
+    if (!target) return <p>존재하지 않는 방 번호입니다.</p>;
     return (
       <section className="mx-auto flex w-full max-w-sm flex-col gap-4">
-        <h1 className="text-2xl font-semibold">
-          방 <span className="tracking-widest">{code}</span> 입장
-        </h1>
+        <div>
+          <h1 className="text-2xl font-semibold">{target.name}</h1>
+          <p className="text-sm text-zinc-500">
+            방 번호 <span className="font-mono tracking-widest">{code}</span> · 닉네임과 악기를 입력하고 입장하세요
+          </p>
+        </div>
         <JoinRoomForm code={code} />
       </section>
     );
