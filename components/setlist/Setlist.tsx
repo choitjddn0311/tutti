@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState, useTransition } from "react";
+import Link from "next/link";
 import { deleteSong, finalizeUpload, moveSong, prepareUpload } from "@/app/actions/setlist";
 import { countPdfPages } from "@/lib/pdf";
 import { getBrowserSupabase } from "@/lib/supabase/browser";
@@ -43,12 +44,12 @@ export function Setlist({ code, songs }: { code: string; songs: SetlistSong[] })
           {songs.map((song, i) => (
             <li key={song.id} className="flex items-center gap-3 px-3 py-2">
               <span className="w-6 text-right text-sm text-zinc-500">{i + 1}</span>
-              <div className="min-w-0 flex-1">
+              <Link href={`/room/${code}/song/${song.id}`} className="min-w-0 flex-1 rounded-md hover:bg-zinc-50 dark:hover:bg-zinc-900">
                 <p className="truncate font-medium">{song.title}</p>
                 <p className="text-xs text-zinc-500">
                   {song.file_type === "pdf" ? `PDF · ${song.page_count}쪽` : "이미지"}
                 </p>
-              </div>
+              </Link>
               <IconButton
                 label="위로"
                 disabled={busy || i === 0}
