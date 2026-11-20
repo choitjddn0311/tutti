@@ -1,43 +1,10 @@
 import "server-only";
-import {
-  createHmac,
-  randomBytes,
-  scrypt as scryptCb,
-  timingSafeEqual,
-} from "node:crypto";
-import { promisify } from "node:util";
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { cookies, headers } from "next/headers";
 
-const scrypt = promisify(scryptCb) as (
-  password: string,
-  salt: Buffer,
-  keylen: number,
-) => Promise<Buffer>;
-
-const KEY_LEN = 32;
 const SESSION_MAX_AGE = 60 * 60 * 24 * 30; // 30일
 
 export const ROOM_CODE_RE = /^[0-9]{4}$/;
-
-// ---------- 비밀번호 ----------
-
-/** `scrypt$<salt b64>$<hash b64>` 형식으로 저장한다. */
-export async function hashPassword(password: string): Promise<string> {
-  const salt = randomBytes(16);
-  const hash = await scrypt(password, salt, KEY_LEN);
-  return `scrypt$${salt.toString("base64")}$${hash.toString("base64")}`;
-}
-
-export async function verifyPassword(
-  password: string,
-  stored: string,
-): Promise<boolean> {
-  const [algo, saltB64, hashB64] = stored.split("$");
-  if (algo !== "scrypt" || !saltB64 || !hashB64) return false;
-  const expected = Buffer.from(hashB64, "base64");
-  const actual = await scrypt(password, Buffer.from(saltB64, "base64"), expected.length);
-  return actual.length === expected.length && timingSafeEqual(actual, expected);
-}
 
 // ---------- 방 입장 세션 (방별 서명 쿠키) ----------
 

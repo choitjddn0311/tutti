@@ -15,8 +15,11 @@ const btn =
 export function SignalPanel({
   onClose,
   viewer,
+  showCues = true,
 }: {
   onClose: () => void;
+  /** 뷰어는 악보 아래 줄에 큐 버튼이 있으므로 패널에서는 숨긴다 */
+  showCues?: boolean;
   viewer?: {
     page: number;
     sections: Section[];
@@ -41,13 +44,13 @@ export function SignalPanel({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="font-semibold">사인 보내기</h2>
+          <h2 className="font-semibold">{showCues ? "사인 보내기" : "메시지 · 섹션"}</h2>
           <button type="button" onClick={onClose} className="rounded-md px-2 py-1 text-sm text-zinc-500">
             닫기
           </button>
         </div>
 
-        <section className="grid grid-cols-2 gap-2">
+        {showCues && <section className="grid grid-cols-2 gap-2">
           {PRESET_CUES.map((cue) => (
             <button
               key={cue}
@@ -61,7 +64,7 @@ export function SignalPanel({
               {cue}
             </button>
           ))}
-        </section>
+        </section>}
 
         <form
           className="mt-3 flex gap-2"

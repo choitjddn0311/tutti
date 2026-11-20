@@ -1,13 +1,8 @@
 "use client";
 
+import { CUE_COLOR } from "./cueColors";
 import { useRoomRealtime } from "./RoomRealtime";
 
-const CUE_COLOR: Record<string, string> = {
-  스톱: "bg-red-600",
-  엔딩: "bg-violet-600",
-  처음으로: "bg-sky-600",
-  "한 번 더": "bg-emerald-600",
-};
 
 /**
  * 방 전체(셋리스트·뷰어)에 겹쳐 뜨는 알림.
@@ -38,7 +33,7 @@ export function RoomNotices() {
         </div>
       )}
       {toasts.length > 0 && (
-        <div className="pointer-events-none fixed inset-x-0 bottom-4 z-50 flex flex-col items-center gap-2 px-4">
+        <div className="pointer-events-none fixed inset-x-0 bottom-20 z-50 flex flex-col items-center gap-2 px-4">
           {toasts.map((n) => (
             <button
               key={n.id}

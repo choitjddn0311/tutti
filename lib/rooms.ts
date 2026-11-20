@@ -21,16 +21,33 @@ export type Song = {
   page_count: number;
 };
 
-/** 비밀번호 해시를 포함한 방 조회 — 입장 검증 전용. 결과를 클라이언트로 넘기지 않는다. */
-export async function findRoomWithHash(code: string) {
+/** 방 번호로 방 조회 (입장용) */
+export async function findRoomByCode(code: string): Promise<Room | null> {
   if (!ROOM_CODE_RE.test(code)) return null;
   const { data, error } = await getServerSupabase()
     .from("rooms")
-    .select("id, code, name, current_song_id, current_page, password_hash")
+    .select("id, code, name, current_song_id, current_page")
     .eq("code", code)
     .maybeSingle();
   if (error) throw new Error("방 조회 실패");
-  return data as (Room & { password_hash: string }) | null;
+  return data as Room | null;
+}
+
+export type RoomListItem = { code: string; name: string; songCount: number };
+
+/** 첫 화면 방 목록 (최근 생성순). 비밀번호 없이 번호로 입장하는 방식(2026-11-21 결정) */
+export async function listRooms(): Promise<RoomListItem[]> {
+  const { data, error } = await getServerSupabase()
+    .from("rooms")
+    .select("code, name, songs!songs_room_id_fkey(count)")
+    .order("created_at", { ascending: false })
+    .limit(100);
+  if (error) throw new Error("방 목록 조회 실패");
+  return (data as { code: string; name: string; songs: { count: number }[] }[]).map((r) => ({
+    code: r.code,
+    name: r.name,
+    songCount: r.songs?.[0]?.count ?? 0,
+  }));
 }
 
 /**

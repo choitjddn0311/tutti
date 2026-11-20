@@ -8,6 +8,9 @@ import { useRoomRealtime, type PointSignal } from "@/components/room/RoomRealtim
 import { SignalPanel } from "@/components/room/SignalPanel";
 import { SyncControls } from "@/components/room/SyncBar";
 import type { Section } from "@/lib/rooms";
+import { PRESET_CUES } from "@/lib/upload-rules";
+import { CUE_COLOR } from "@/components/room/cueColors";
+import { SongPicker, type PickerSong } from "./SongPicker";
 import { ImagePage } from "./ImagePage";
 import { PageOverlay, type PlaceMode } from "./PageOverlay";
 import { useElementSize, usePageKeys, useWakeLock } from "./hooks";
@@ -29,6 +32,8 @@ type Props = {
   backHref: string;
   code: string;
   initialSections: Section[];
+  /** 셋리스트 (뷰어에서 바로 곡을 고르기 위해) */
+  songs: PickerSong[];
 };
 
 export function ScoreViewer({
@@ -40,6 +45,7 @@ export function ScoreViewer({
   backHref,
   code,
   initialSections,
+  songs,
 }: Props) {
   const rt = useRoomRealtime();
   // 새로고침·늦은 입장: 리더의 현재 위치(DB 값)가 이 곡이면 그 쪽에서 시작
@@ -52,7 +58,6 @@ export function ScoreViewer({
 
   const prev = useCallback(() => setPage((p) => Math.max(1, p - 1)), []);
   const next = useCallback(() => setPage((p) => Math.min(numPages, p + 1)), [numPages]);
-  usePageKeys(prev, next);
 
   // ---------- 동기화 ----------
   const isLeader = rt?.isLeader ?? false;
@@ -90,6 +95,13 @@ export function ScoreViewer({
   const [mode, setMode] = useState<PlaceMode>("none");
   const [pendingLabel, setPendingLabel] = useState<string | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  // 곡 목록·사인 패널이 열려 있으면 페달·키로 넘기지 않는다 (가려진 채로 넘어가 리더면 전원에게 전파되는 것 방지)
+  const sheetOpen = pickerOpen || panelOpen;
+  usePageKeys(
+    useCallback(() => !sheetOpen && prev(), [sheetOpen, prev]),
+    useCallback(() => !sheetOpen && next(), [sheetOpen, next]),
+  );
   const [busy, setBusy] = useState(false);
   const [sectionError, setSectionError] = useState<string | null>(null);
 
@@ -207,7 +219,18 @@ export function ScoreViewer({
         >
           ← 셋리스트
         </Link>
-        <h1 className="min-w-0 flex-1 truncate text-center font-medium">{title}</h1>
+        <h1 className="min-w-0 flex-1 text-center">
+          {/* 제목을 누르면 셋리스트를 펼쳐 셋리스트 화면으로 나가지 않고 곡을 바꾼다 */}
+          <button
+            type="button"
+            onMouseDown={noFocus}
+            onClick={() => setPickerOpen(true)}
+            aria-label="곡 목록"
+            className="max-w-full truncate rounded-md px-2 py-1 font-medium hover:bg-zinc-100 dark:hover:bg-zinc-800"
+          >
+            {title} <span className="text-zinc-400">▾</span>
+          </button>
+        </h1>
         <span
           className={`hidden text-xs sm:inline ${wakeLock ? "text-emerald-600" : "text-zinc-400"}`}
           title={wakeLock ? "화면 꺼짐 방지 켜짐" : "화면 꺼짐 방지를 사용할 수 없음"}
@@ -227,15 +250,8 @@ export function ScoreViewer({
         </div>
       </header>
       {rt && (
-        <div className="flex h-10 shrink-0 items-center justify-between gap-2 border-b border-zinc-200 bg-white px-3 dark:border-zinc-800 dark:bg-zinc-950">
+        <div className="flex h-10 shrink-0 items-center border-b border-zinc-200 bg-white px-3 dark:border-zinc-800 dark:bg-zinc-950">
           <SyncControls compact />
-          <button
-            type="button"
-            onClick={() => setPanelOpen(true)}
-            className="h-8 shrink-0 rounded-full bg-zinc-900 px-3 text-xs font-medium text-white dark:bg-zinc-100 dark:text-zinc-900"
-          >
-            사인
-          </button>
         </div>
       )}
       {mode !== "none" && (
@@ -296,8 +312,60 @@ export function ScoreViewer({
         )}
       </div>
 
+      {/* 악보 바로 아래 사인 줄: 큐는 한 번 탭으로 바로 보냄 */}
+      {rt && (
+        <nav
+          aria-label="사인"
+          // 큐 개수 + 📍 + … 만큼 한 줄로
+          style={{ gridTemplateColumns: `repeat(${PRESET_CUES.length + 2}, minmax(0, 1fr))` }}
+          className="grid h-14 shrink-0 gap-1.5 border-t border-zinc-200 bg-white px-2 py-1.5 dark:border-zinc-800 dark:bg-zinc-950"
+        >
+          {PRESET_CUES.map((cue) => (
+            <button
+              key={cue}
+              type="button"
+              onMouseDown={noFocus}
+              onClick={() => rt.sendCue(cue)}
+              className={`rounded-lg text-xs font-semibold text-white active:scale-95 sm:text-sm ${CUE_COLOR[cue] ?? "bg-zinc-700"}`}
+            >
+              {cue}
+            </button>
+          ))}
+          <button
+            type="button"
+            onMouseDown={noFocus}
+            onClick={() => {
+              // 섹션 위치 지정 중이었으면 그 라벨은 버린다
+              setPendingLabel(null);
+              setMode(mode === "point" ? "none" : "point");
+            }}
+            aria-label="악보 위치 찍어 보여주기"
+            aria-pressed={mode === "point"}
+            className={`rounded-lg border text-lg active:scale-95 ${
+              mode === "point" ? "border-sky-600 bg-sky-600 text-white" : "border-red-400"
+            }`}
+          >
+            📍
+          </button>
+          <button
+            type="button"
+            onMouseDown={noFocus}
+            onClick={() => setPanelOpen(true)}
+            aria-label="메시지·섹션"
+            className="rounded-lg border border-zinc-300 text-lg active:scale-95 dark:border-zinc-700"
+          >
+            …
+          </button>
+        </nav>
+      )}
+
+      {pickerOpen && (
+        <SongPicker code={code} initialSongs={songs} currentId={songId} onClose={() => setPickerOpen(false)} />
+      )}
+
       {panelOpen && (
         <SignalPanel
+          showCues={false}
           onClose={() => setPanelOpen(false)}
           viewer={{
             page,
