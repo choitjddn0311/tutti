@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import Link from "next/link";
 import { connection } from "next/server";
-import { CreateRoomForm } from "@/components/room/RoomForms";
+import { CreateRoomForm, JoinRoomForm } from "@/components/room/RoomForms";
 import { listRooms } from "@/lib/rooms";
 
 export default function Home() {
@@ -17,6 +17,12 @@ export default function Home() {
         <Suspense fallback={<p className="text-sm text-zinc-500">불러오는 중…</p>}>
           <RoomList />
         </Suspense>
+      </section>
+
+      <section className="flex flex-col gap-4">
+        <h2 className="text-lg font-medium">번호로 입장</h2>
+        <p className="-mt-2 text-sm text-zinc-500">목록에 없는 방(최근 100개 밖)은 번호로 들어갈 수 있습니다.</p>
+        <JoinRoomForm />
       </section>
 
       <section className="flex flex-col gap-4">

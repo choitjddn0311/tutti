@@ -1,13 +1,8 @@
 "use client";
 
+import { CUE_COLOR } from "./cueColors";
 import { useRoomRealtime } from "./RoomRealtime";
 
-const CUE_COLOR: Record<string, string> = {
-  스톱: "bg-red-600",
-  엔딩: "bg-violet-600",
-  처음으로: "bg-sky-600",
-  "한 번 더": "bg-emerald-600",
-};
 
 /**
  * 방 전체(셋리스트·뷰어)에 겹쳐 뜨는 알림.

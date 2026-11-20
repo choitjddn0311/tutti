@@ -1,6 +1,8 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { getSetlist } from "@/app/actions/setlist";
 
 export type PickerSong = {
   id: string;
@@ -15,16 +17,30 @@ export type PickerSong = {
  */
 export function SongPicker({
   code,
-  songs,
+  initialSongs,
   currentId,
   onClose,
 }: {
   code: string;
-  songs: PickerSong[];
+  /** 뷰어를 연 시점의 셋리스트 — 바로 보여주고, 열 때마다 최신 목록으로 바꾼다 */
+  initialSongs: PickerSong[];
   currentId: string;
   onClose: () => void;
 }) {
   const router = useRouter();
+  const [songs, setSongs] = useState(initialSongs);
+  // 합주 중 다른 사람이 곡을 올리거나 지웠을 수 있으므로 열 때 다시 불러온다
+  useEffect(() => {
+    let active = true;
+    getSetlist(code)
+      .then((list) => {
+        if (active && list) setSongs(list);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [code]);
 
   return (
     <div className="fixed inset-0 z-40 flex flex-col justify-end bg-black/30" onClick={onClose}>

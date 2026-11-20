@@ -12,7 +12,13 @@ const primary =
 const MEMBER_KEY = "tutti:member";
 function loadMember(): { nickname?: string; instrument?: string } {
   try {
-    return JSON.parse(localStorage.getItem(MEMBER_KEY) ?? "{}");
+    const v: unknown = JSON.parse(localStorage.getItem(MEMBER_KEY) ?? "{}");
+    if (!v || typeof v !== "object") return {};
+    const { nickname, instrument } = v as Record<string, unknown>;
+    return {
+      nickname: typeof nickname === "string" ? nickname : undefined,
+      instrument: typeof instrument === "string" ? instrument : undefined,
+    };
   } catch {
     return {};
   }

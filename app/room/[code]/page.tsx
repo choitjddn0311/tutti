@@ -31,7 +31,12 @@ async function RoomContent({ code }: { code: string }) {
 
   const auth = await requireRoom(code);
   if (!auth) {
-    const target = await findRoomByCode(code);
+    let target;
+    try {
+      target = await findRoomByCode(code);
+    } catch {
+      return <p className="text-red-600 dark:text-red-400">방 정보를 불러오지 못했습니다. 새로고침해 보세요.</p>;
+    }
     if (!target) return <p>존재하지 않는 방 번호입니다.</p>;
     return (
       <section className="mx-auto flex w-full max-w-sm flex-col gap-4">

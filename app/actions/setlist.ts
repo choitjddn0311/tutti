@@ -3,7 +3,7 @@
 import { randomUUID } from "node:crypto";
 import { refresh } from "next/cache";
 import { getServerSupabase } from "@/lib/supabase/server";
-import { requireRoom } from "@/lib/rooms";
+import { listSongs, requireRoom } from "@/lib/rooms";
 import {
   ALLOWED_MIME,
   MAX_PDF_PAGES,
@@ -166,4 +166,14 @@ export async function moveSong(
 
   refresh();
   return { ok: true };
+}
+
+/** 뷰어 곡 목록 갱신용 셋리스트 (열 때마다 최신으로) */
+export async function getSetlist(
+  code: string,
+): Promise<{ id: string; title: string; file_type: "pdf" | "image"; page_count: number }[] | null> {
+  const auth = await requireRoom(code);
+  if (!auth) return null;
+  const songs = await listSongs(auth.room.id);
+  return songs.map(({ id, title, file_type, page_count }) => ({ id, title, file_type, page_count }));
 }
