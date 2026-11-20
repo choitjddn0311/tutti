@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import { connection } from "next/server";
 import Link from "next/link";
 import { JoinRoomForm } from "@/components/room/RoomForms";
+import { RoomLive } from "@/components/room/RoomLive";
 import { Setlist } from "@/components/setlist/Setlist";
 import { ROOM_CODE_RE } from "@/lib/room-auth";
 import { listSongs, requireRoom } from "@/lib/rooms";
@@ -56,6 +57,7 @@ async function RoomContent({ code }: { code: string }) {
           {session.nickname} · {session.instrument}
         </p>
       </header>
+      <RoomLive songs={songs.map(({ id, title }) => ({ id, title }))} />
       <Setlist
         code={room.code}
         songs={songs.map(({ id, title, file_type, page_count }) => ({

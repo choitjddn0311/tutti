@@ -38,6 +38,7 @@ async function SongContent({ code, songId }: { code: string; songId: string }) {
     <ScoreViewer
       // 곡이 바뀌면 페이지 상태 초기화
       key={song.id}
+      songId={song.id}
       title={song.title}
       url={song.url}
       fileType={song.file_type}

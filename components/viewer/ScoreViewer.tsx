@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
+import { useRoomRealtime } from "@/components/room/RoomRealtime";
+import { SyncControls } from "@/components/room/SyncBar";
 import { useElementSize, usePageKeys, useWakeLock } from "./hooks";
 
 // pdf.js는 브라우저 API(DOMMatrix 등)를 쓰므로 서버 렌더링에서 제외
@@ -12,6 +14,7 @@ const PdfPages = dynamic(() => import("./PdfPages"), {
 });
 
 type Props = {
+  songId: string;
   title: string;
   url: string;
   fileType: "pdf" | "image";
@@ -19,8 +22,12 @@ type Props = {
   backHref: string;
 };
 
-export function ScoreViewer({ title, url, fileType, pageCount, backHref }: Props) {
-  const [page, setPage] = useState(1);
+export function ScoreViewer({ songId, title, url, fileType, pageCount, backHref }: Props) {
+  const rt = useRoomRealtime();
+  // 새로고침·늦은 입장: 리더의 현재 위치(DB 값)가 이 곡이면 그 쪽에서 시작
+  const [page, setPage] = useState(() =>
+    rt?.position.songId === songId ? Math.max(1, rt.position.page) : 1,
+  );
   const [numPages, setNumPages] = useState(fileType === "pdf" ? pageCount : 1);
   const [boxRef, box] = useElementSize<HTMLDivElement>();
   const wakeLock = useWakeLock();
@@ -37,6 +44,27 @@ export function ScoreViewer({ title, url, fileType, pageCount, backHref }: Props
   const prev = useCallback(() => setPage((p) => Math.max(1, p - 1)), []);
   const next = useCallback(() => setPage((p) => Math.min(numPages, p + 1)), [numPages]);
   usePageKeys(prev, next);
+
+  // ---------- 동기화 ----------
+  const isLeader = rt?.isLeader ?? false;
+  const publish = rt?.publishPosition;
+  // 리더: 내 위치를 모두에게 알림 (리더를 맡는 순간에도 현재 위치를 알림)
+  useEffect(() => {
+    if (isLeader && publish) publish(songId, page);
+  }, [isLeader, publish, songId, page]);
+
+  // 따라가기: 리더가 이 곡에서 넘기면 같은 쪽으로 (다른 곡 이동은 Provider가 처리)
+  const subscribe = rt?.subscribePosition;
+  const numPagesRef = useRef(numPages);
+  useEffect(() => {
+    numPagesRef.current = numPages;
+  });
+  useEffect(() => {
+    if (!subscribe) return;
+    return subscribe((pos) => {
+      if (pos.songId === songId) setPage(Math.max(1, Math.min(pos.page, numPagesRef.current)));
+    });
+  }, [subscribe, songId]);
 
   // 실제 PDF 쪽수가 DB 값과 다르면 실제 값을 따르고, 범위를 넘은 현재 쪽을 당겨온다
   const onNumPages = useCallback((n: number) => {
@@ -72,6 +100,11 @@ export function ScoreViewer({ title, url, fileType, pageCount, backHref }: Props
           </NavButton>
         </div>
       </header>
+      {rt && (
+        <div className="flex h-10 shrink-0 items-center border-b border-zinc-200 bg-white px-3 dark:border-zinc-800 dark:bg-zinc-950">
+          <SyncControls compact />
+        </div>
+      )}
 
       {/* 악보 영역: 왼쪽 절반 탭 = 이전, 오른쪽 절반 탭 = 다음 */}
       <div className="relative min-h-0 flex-1 p-2">
