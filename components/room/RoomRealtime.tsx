@@ -49,8 +49,10 @@ function isPositionEvent(p: unknown): p is PositionEvent {
     !!x &&
     typeof x.songId === "string" &&
     Number.isInteger(x.page) &&
+    x.page >= 1 &&
     typeof x.epoch === "number" &&
-    typeof x.seq === "number"
+    typeof x.seq === "number" &&
+    typeof x.from === "string"
   );
 }
 
@@ -87,6 +89,7 @@ export function useRoomRealtime(): RoomRealtime | null {
 
 const PERSIST_DELAY = 400; // ms — 빠른 연속 넘김은 마지막 위치만 저장
 const RECONNECT_DELAY = 2000; // ms — 서버가 채널을 닫았을 때 재연결 대기
+const NAV_RETRY_MS = 3000; // ms — 같은 곡으로의 이동을 다시 시도하기까지
 
 // ---------- 브라우저 저장소 (편의 기능이므로 실패해도 무시) ----------
 function storageGet(kind: "local" | "session", key: string): string | null {
@@ -186,10 +189,22 @@ export function RoomRealtimeProvider({
   const myPos = useRef<LeaderPos | null>(null);
 
   /** 리더 차수 변경. 리더를 잃거나 새로 맡으면 예전 위치는 버린다 (다시 맡을 때 옛 위치로 끌고 가지 않게) */
+  const persistTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  /** 아직 저장 안 된 리더 위치: 직접 내려놓으면 바로 저장, 다른 사람이 리더를 가져가면 버린다 */
+  const pendingPersist = useRef<(() => void) | null>(null);
+
   const setEpoch = useCallback(
-    (v: number | null) => {
+    (v: number | null, opts?: { flush?: boolean }) => {
       setEpochState(v);
       myPos.current = null;
+      if (persistTimer.current) {
+        clearTimeout(persistTimer.current);
+        persistTimer.current = null;
+        // 다른 사람이 리더를 가져간 경우엔 버린다 (새 리더의 위치를 옛 위치로 덮어쓰지 않게)
+        if (opts?.flush) pendingPersist.current?.();
+      }
+      pendingPersist.current = null;
       storageSet("session", epochKey, v === null ? null : String(v));
     },
     [epochKey],
@@ -231,8 +246,9 @@ export function RoomRealtimeProvider({
   /** 지금까지 본 가장 큰 리더 차수 — 리더를 맡을 때 이보다 크게 잡아야 따라가는 사람이 옛 리더로 취급하지 않는다 */
   const maxEpochSeen = useRef(0);
   /** 이동 중인 목적지 (같은 곳으로 router.push 중복 방지) */
-  const pendingNav = useRef<string | null>(null);
-  const persistTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingNav = useRef<{ target: string; at: number } | null>(null);
+  /** 현재 리더의 차수 — 리더의 clientId가 바뀌어도 차수가 같으면 같은 리더(새로고침)로 본다 */
+  const leaderEpoch = useRef<number | null>(null);
   const listeners = useRef(new Set<PositionListener>());
 
   /**
@@ -266,8 +282,10 @@ export function RoomRealtimeProvider({
     if (!follow || isLeader || !position.songId || knownOrder.current.epoch < 0) return;
     const pos = { songId: position.songId, page: position.page };
     const target = `/room/${code}/song/${pos.songId}`;
-    if (pathname !== target && pendingNav.current !== target) {
-      pendingNav.current = target;
+    const pending = pendingNav.current;
+    // 같은 곳으로 이동 중이면 다시 push하지 않음. 단, 이동이 실패·되돌아온 경우를 위해 3초 지나면 다시 시도
+    if (pathname !== target && !(pending?.target === target && Date.now() - pending.at < NAV_RETRY_MS)) {
+      pendingNav.current = { target, at: Date.now() };
       router.push(target);
     }
     listeners.current.forEach((cb) => cb(pos));
@@ -287,6 +305,16 @@ export function RoomRealtimeProvider({
     sendBroadcast("position_request", { from: latest.current.me.clientId });
   }, [sendBroadcast]);
 
+  /** 삭제된 곡을 가리키는 위치를 잊는다 (리더면 요청에 답하는 위치도 비움) */
+  const forgetLocal = useCallback((songId: string) => {
+    if (latest.current.position.songId === songId) {
+      latest.current.position = { songId: null, page: 1 };
+      setPositionState({ songId: null, page: 1 });
+    }
+    if (myPos.current?.songId === songId) myPos.current = null;
+    if (pendingNav.current?.target.endsWith(`/song/${songId}`)) pendingNav.current = null;
+  }, []);
+
   // ---------- 채널 연결 (채널명은 방 UUID — 입장 인증을 통과해야 알 수 있음) ----------
   useEffect(() => {
     if (!clientId) return;
@@ -297,7 +325,16 @@ export function RoomRealtimeProvider({
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
 
     const onPosition = ({ payload }: { payload: unknown }) => {
-      if (isPositionEvent(payload) && acceptLeaderPos(payload)) syncToLeader();
+      if (!isPositionEvent(payload)) return;
+      // 현재 리더가 보낸 것만 받는다. 리더를 아직 모르면(리더 새로고침 직후 Presence보다 먼저 도착) 받는다
+      const leaderId = latest.current.leaderId;
+      if (leaderId && payload.from !== leaderId) return;
+      if (acceptLeaderPos(payload)) syncToLeader();
+    };
+
+    const onSongDeleted = ({ payload }: { payload: unknown }) => {
+      const songId = (payload as { songId?: unknown } | null)?.songId;
+      if (typeof songId === "string") forgetLocal(songId);
     };
 
     const connect = () => {
@@ -327,13 +364,23 @@ export function RoomRealtimeProvider({
           setEpoch(null);
         }
         const prevLeader = latest.current.leaderId;
+        const prevLeaderEpoch = leaderEpoch.current;
+        // 리더가 잠깐 사라져도(새로고침: 나갔다 다시 들어옴) 마지막 리더 차수는 기억한다
+        if (top) leaderEpoch.current = top.epoch;
         latest.current.leaderId = top?.clientId;
         latest.current.isLeader = top?.clientId === mine.clientId && mine.epoch !== null;
-        // 새 리더가 보이면(늦은 입장 포함) 그 리더의 현재 위치를 요청한다
-        if (top && top.clientId !== mine.clientId && top.clientId !== prevLeader) requestPosition();
+        // 리더가 다른 사람으로 바뀌면(늦은 입장 포함) 순서 기록을 새 리더 기준으로 다시 시작하고 현재 위치를 요청한다.
+        // 리더 차수는 기기마다 본 범위가 달라 새 리더가 예전 리더보다 작은 차수를 가질 수 있기 때문.
+        // 단, 차수가 같으면 같은 리더가 새로고침해 다시 들어온 것이므로 순서 기록을 유지한다
+        // (초기화하면 셋리스트로 나가 있던 사람까지 다시 끌고 간다).
+        if (top && top.clientId !== mine.clientId && top.clientId !== prevLeader) {
+          if (top.epoch !== prevLeaderEpoch) knownOrder.current = { epoch: -1, seq: -1 };
+          requestPosition();
+        }
       })
         .on("broadcast", { event: "page_change" }, onPosition)
         .on("broadcast", { event: "song_change" }, onPosition)
+        .on("broadcast", { event: "song_deleted" }, onSongDeleted)
         .on("broadcast", { event: "position_request" }, () => {
           // 리더만 답한다. 같은 순서 번호로 다시 보내므로 이미 맞춰진 사람에게는 영향 없음
           const pos = myPos.current;
@@ -344,8 +391,8 @@ export function RoomRealtimeProvider({
         .subscribe((status) => {
           if (cancelled) return;
           if (status === "SUBSCRIBED") {
+            // track은 아래 [me, connected] effect 한 곳에서만 (Presence 갱신 제한 30초 5회)
             setConnected(true);
-            void ch.track(latest.current.me);
           } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
             // 서버가 채널을 닫았거나 연결 오류 → 잠시 후 새 채널로 다시 연결
             setConnected(false);
@@ -374,7 +421,7 @@ export function RoomRealtimeProvider({
         });
       }
     };
-  }, [roomId, clientId, reconnectTick, setEpoch, syncToLeader, acceptLeaderPos, requestPosition, sendBroadcast]);
+  }, [roomId, clientId, reconnectTick, setEpoch, syncToLeader, acceptLeaderPos, requestPosition, sendBroadcast, forgetLocal]);
 
   // 내 정보(이름·리더 차수)가 바뀔 때만 다시 track — 자주 부르면 Presence 갱신 제한(30초 5회)에 걸린다
   useEffect(() => {
@@ -390,7 +437,7 @@ export function RoomRealtimeProvider({
     setEpoch(max + 1);
   }, [members, epoch, setEpoch]);
 
-  const releaseLead = useCallback(() => setEpoch(null), [setEpoch]);
+  const releaseLead = useCallback(() => setEpoch(null, { flush: true }), [setEpoch]);
 
   const setFollow = useCallback(
     (on: boolean) => {
@@ -409,7 +456,10 @@ export function RoomRealtimeProvider({
       const myEpoch = latest.current.me.epoch;
       if (myEpoch === null) return;
       const prev = latest.current.position;
-      const same = prev.songId === songId && prev.page === page;
+      // '같은 위치'는 이번 리더 임기에 내가 이미 알린 위치인지로 판단한다.
+      // 내가 알고 있는 위치(DB·이전 리더 값)와 같아도 따라가는 사람들은 모를 수 있다.
+      const mine = myPos.current;
+      const same = !!mine && mine.epoch === myEpoch && mine.songId === songId && mine.page === page;
       // seq는 이 기기에서 계속 증가해야 한다 (시계가 뒤로 가도, 새로고침해도) → sessionStorage에 마지막 값 보관
       const lastSeq = Number(storageGet("session", seqKey) ?? 0) || 0;
       const order = {
@@ -425,26 +475,30 @@ export function RoomRealtimeProvider({
       const pos = { songId, page };
       latest.current.position = pos;
       setPositionState(pos);
-      sendBroadcast(prev.songId === songId ? "page_change" : "song_change", {
+      sendBroadcast(prev.songId === songId && mine?.songId === songId ? "page_change" : "song_change", {
         ...leaderPos,
         from: clientId,
       } satisfies PositionEvent);
       if (persistTimer.current) clearTimeout(persistTimer.current);
+      const persist = () => void setPosition(code, songId, page);
+      pendingPersist.current = persist;
       persistTimer.current = setTimeout(() => {
-        void setPosition(code, songId, page);
+        persistTimer.current = null;
+        pendingPersist.current = null;
+        persist();
       }, PERSIST_DELAY);
     },
     [clientId, code, seqKey, sendBroadcast],
   );
 
-  /** 곡이 삭제되면 그 곡을 가리키는 위치를 잊는다 (리더면 요청에 답하는 위치도 비움) */
-  const forgetSong = useCallback((songId: string) => {
-    if (latest.current.position.songId === songId) {
-      latest.current.position = { songId: null, page: 1 };
-      setPositionState({ songId: null, page: 1 });
-    }
-    if (myPos.current?.songId === songId) myPos.current = null;
-  }, []);
+  /** 곡 삭제를 모두에게 알리고 내 쪽 위치도 잊는다 */
+  const forgetSong = useCallback(
+    (songId: string) => {
+      forgetLocal(songId);
+      sendBroadcast("song_deleted", { songId });
+    },
+    [forgetLocal, sendBroadcast],
+  );
 
   const subscribePosition = useCallback((cb: PositionListener) => {
     listeners.current.add(cb);

@@ -55,19 +55,20 @@ export function ScoreViewer({ songId, title, url, fileType, pageCount, backHref 
 
   // 따라가기: 리더가 이 곡에서 넘기면 같은 쪽으로 (다른 곡 이동은 Provider가 처리)
   const subscribe = rt?.subscribePosition;
-  const numPagesRef = useRef(numPages);
-  useEffect(() => {
-    numPagesRef.current = numPages;
-  });
+  // 실제 쪽수를 알기 전(PDF 로드 전)에는 DB page_count가 틀릴 수 있으므로 자르지 않는다 → onNumPages가 범위를 맞춤
+  const realPagesRef = useRef<number | null>(fileType === "pdf" ? null : 1);
   useEffect(() => {
     if (!subscribe) return;
     return subscribe((pos) => {
-      if (pos.songId === songId) setPage(Math.max(1, Math.min(pos.page, numPagesRef.current)));
+      if (pos.songId !== songId) return;
+      const max = realPagesRef.current;
+      setPage(Math.max(1, max ? Math.min(pos.page, max) : pos.page));
     });
   }, [subscribe, songId]);
 
   // 실제 PDF 쪽수가 DB 값과 다르면 실제 값을 따르고, 범위를 넘은 현재 쪽을 당겨온다
   const onNumPages = useCallback((n: number) => {
+    realPagesRef.current = n;
     setNumPages(n);
     setPage((p) => Math.min(p, n));
   }, []);
