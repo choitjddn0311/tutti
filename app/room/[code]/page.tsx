@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { connection } from "next/server";
 import Link from "next/link";
 import { JoinRoomForm } from "@/components/room/RoomForms";
 import { Setlist } from "@/components/setlist/Setlist";
@@ -21,6 +22,8 @@ export default function RoomPage({ params }: PageProps<"/room/[code]">) {
 }
 
 async function RoomContent({ code }: { code: string }) {
+  // 쿠키 세션 만료 확인에 현재 시각을 쓰므로 요청 시점 렌더링으로 고정
+  await connection();
   if (!ROOM_CODE_RE.test(code)) {
     return <p>존재하지 않는 방 코드입니다.</p>;
   }

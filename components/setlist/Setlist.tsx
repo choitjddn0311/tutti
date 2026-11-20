@@ -124,7 +124,8 @@ function UploadForm({ code, onError }: { code: string; onError: (e: string | nul
         setStatus("PDF 확인 중…");
         try {
           pageCount = await countPdfPages(file);
-        } catch {
+        } catch (err) {
+          console.error("PDF 페이지 수 계산 실패", err);
           return onError("PDF를 읽을 수 없습니다. 손상되었거나 암호가 걸린 파일인지 확인하세요.");
         }
       }
