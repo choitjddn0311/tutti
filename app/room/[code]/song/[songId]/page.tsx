@@ -3,7 +3,7 @@ import { connection } from "next/server";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { ScoreViewer } from "@/components/viewer/ScoreViewer";
-import { getSongWithUrl, listSectionsForSong, requireRoom } from "@/lib/rooms";
+import { getSongWithUrl, listSectionsForSong, listSongs, requireRoom } from "@/lib/rooms";
 
 export default function SongPage({ params }: PageProps<"/room/[code]/song/[songId]">) {
   return (
@@ -22,10 +22,11 @@ async function SongContent({ code, songId }: { code: string; songId: string }) {
   const auth = await requireRoom(code);
   if (!auth) redirect(`/room/${code}`); // 미입장 → 방 입장 화면
 
-  const [song, sections] = await Promise.all([
+  const [song, sections, songs] = await Promise.all([
     getSongWithUrl(auth.room.id, songId),
-    // 섹션은 부가 정보 — 실패해도 악보는 보여준다
+    // 섹션·셋리스트는 부가 정보 — 실패해도 악보는 보여준다
     listSectionsForSong(auth.room.id, songId).catch(() => []),
+    listSongs(auth.room.id).catch(() => []),
   ]);
   if (!song) {
     return (
@@ -50,6 +51,7 @@ async function SongContent({ code, songId }: { code: string; songId: string }) {
       backHref={`/room/${code}`}
       code={code}
       initialSections={sections}
+      songs={songs.map(({ id, title, file_type, page_count }) => ({ id, title, file_type, page_count }))}
     />
   );
 }

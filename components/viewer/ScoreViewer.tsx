@@ -8,6 +8,8 @@ import { useRoomRealtime, type PointSignal } from "@/components/room/RoomRealtim
 import { SignalPanel } from "@/components/room/SignalPanel";
 import { SyncControls } from "@/components/room/SyncBar";
 import type { Section } from "@/lib/rooms";
+import { PRESET_CUES } from "@/lib/upload-rules";
+import { SongPicker, type PickerSong } from "./SongPicker";
 import { ImagePage } from "./ImagePage";
 import { PageOverlay, type PlaceMode } from "./PageOverlay";
 import { useElementSize, usePageKeys, useWakeLock } from "./hooks";
@@ -29,6 +31,8 @@ type Props = {
   backHref: string;
   code: string;
   initialSections: Section[];
+  /** 셋리스트 (뷰어에서 바로 곡을 고르기 위해) */
+  songs: PickerSong[];
 };
 
 export function ScoreViewer({
@@ -40,6 +44,7 @@ export function ScoreViewer({
   backHref,
   code,
   initialSections,
+  songs,
 }: Props) {
   const rt = useRoomRealtime();
   // 새로고침·늦은 입장: 리더의 현재 위치(DB 값)가 이 곡이면 그 쪽에서 시작
@@ -90,6 +95,7 @@ export function ScoreViewer({
   const [mode, setMode] = useState<PlaceMode>("none");
   const [pendingLabel, setPendingLabel] = useState<string | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [sectionError, setSectionError] = useState<string | null>(null);
 
@@ -207,7 +213,17 @@ export function ScoreViewer({
         >
           ← 셋리스트
         </Link>
-        <h1 className="min-w-0 flex-1 truncate text-center font-medium">{title}</h1>
+        <h1 className="min-w-0 flex-1 text-center">
+          {/* 제목을 누르면 셋리스트를 펼쳐 셋리스트 화면으로 나가지 않고 곡을 바꾼다 */}
+          <button
+            type="button"
+            onClick={() => setPickerOpen(true)}
+            aria-label="곡 목록"
+            className="max-w-full truncate rounded-md px-2 py-1 font-medium hover:bg-zinc-100 dark:hover:bg-zinc-800"
+          >
+            {title} <span className="text-zinc-400">▾</span>
+          </button>
+        </h1>
         <span
           className={`hidden text-xs sm:inline ${wakeLock ? "text-emerald-600" : "text-zinc-400"}`}
           title={wakeLock ? "화면 꺼짐 방지 켜짐" : "화면 꺼짐 방지를 사용할 수 없음"}
@@ -227,15 +243,8 @@ export function ScoreViewer({
         </div>
       </header>
       {rt && (
-        <div className="flex h-10 shrink-0 items-center justify-between gap-2 border-b border-zinc-200 bg-white px-3 dark:border-zinc-800 dark:bg-zinc-950">
+        <div className="flex h-10 shrink-0 items-center border-b border-zinc-200 bg-white px-3 dark:border-zinc-800 dark:bg-zinc-950">
           <SyncControls compact />
-          <button
-            type="button"
-            onClick={() => setPanelOpen(true)}
-            className="h-8 shrink-0 rounded-full bg-zinc-900 px-3 text-xs font-medium text-white dark:bg-zinc-100 dark:text-zinc-900"
-          >
-            사인
-          </button>
         </div>
       )}
       {mode !== "none" && (
@@ -296,8 +305,54 @@ export function ScoreViewer({
         )}
       </div>
 
+      {/* 악보 바로 아래 사인 줄: 큐는 한 번 탭으로 바로 보냄 */}
+      {rt && (
+        <nav
+          aria-label="사인"
+          className="grid h-14 shrink-0 grid-cols-6 gap-1.5 border-t border-zinc-200 bg-white px-2 py-1.5 dark:border-zinc-800 dark:bg-zinc-950"
+        >
+          {PRESET_CUES.map((cue) => (
+            <button
+              key={cue}
+              type="button"
+              onMouseDown={noFocus}
+              onClick={() => rt.sendCue(cue)}
+              className={`rounded-lg text-xs font-semibold text-white active:scale-95 sm:text-sm ${CUE_BUTTON[cue] ?? "bg-zinc-700"}`}
+            >
+              {cue}
+            </button>
+          ))}
+          <button
+            type="button"
+            onMouseDown={noFocus}
+            onClick={() => setMode(mode === "point" ? "none" : "point")}
+            aria-label="악보 위치 찍어 보여주기"
+            aria-pressed={mode === "point"}
+            className={`rounded-lg border text-lg active:scale-95 ${
+              mode === "point" ? "border-sky-600 bg-sky-600 text-white" : "border-red-400"
+            }`}
+          >
+            📍
+          </button>
+          <button
+            type="button"
+            onMouseDown={noFocus}
+            onClick={() => setPanelOpen(true)}
+            aria-label="메시지·섹션"
+            className="rounded-lg border border-zinc-300 text-lg active:scale-95 dark:border-zinc-700"
+          >
+            …
+          </button>
+        </nav>
+      )}
+
+      {pickerOpen && (
+        <SongPicker code={code} songs={songs} currentId={songId} onClose={() => setPickerOpen(false)} />
+      )}
+
       {panelOpen && (
         <SignalPanel
+          showCues={false}
           onClose={() => setPanelOpen(false)}
           viewer={{
             page,
@@ -316,6 +371,14 @@ export function ScoreViewer({
     </div>
   );
 }
+
+/** 큐 버튼 색 (RoomNotices 배너 색과 맞춤) */
+const CUE_BUTTON: Record<string, string> = {
+  스톱: "bg-red-600",
+  엔딩: "bg-violet-600",
+  처음으로: "bg-sky-600",
+  "한 번 더": "bg-emerald-600",
+};
 
 /**
  * 넘김 버튼이 클릭으로 포커스를 가져가지 않게 한다. 포커스된 버튼에서 Space(페달)를 누르면
