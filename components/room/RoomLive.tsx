@@ -8,8 +8,10 @@ import { MemberList, SyncControls } from "./SyncBar";
 export function RoomLive({ songs }: { songs: { id: string; title: string }[] }) {
   const rt = useRoomRealtime();
   if (!rt) return null;
-  const { position, code } = rt;
-  const current = position.songId ? songs.find((s) => s.id === position.songId) : undefined;
+  const { position, code, leader } = rt;
+  // 리더가 있을 때만 '지금 위치' 표시 (리더가 없으면 DB 값은 지난 합주 위치일 수 있음)
+  const current =
+    leader && position.songId ? songs.find((s) => s.id === position.songId) : undefined;
 
   return (
     <section className="flex flex-col gap-4 rounded-lg border border-zinc-200 p-3 dark:border-zinc-800">
