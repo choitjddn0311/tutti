@@ -1,6 +1,7 @@
 import "server-only";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { readRoomSession, ROOM_CODE_RE, type RoomSession } from "@/lib/room-auth";
+import { SCORES_BUCKET } from "@/lib/upload-rules";
 
 export { ALLOWED_MIME, MAX_UPLOAD_BYTES, SCORES_BUCKET } from "@/lib/upload-rules";
 
@@ -59,4 +60,39 @@ export async function listSongs(roomId: string): Promise<Song[]> {
     .order("position", { ascending: true });
   if (error) throw new Error("셋리스트 조회 실패");
   return data as Song[];
+}
+
+const SCORE_URL_TTL = 60 * 60 * 4; // 4시간 — 합주 한 번 동안 유효
+
+export type SongWithUrl = Song & { url: string };
+
+/** 방 소속 곡 1개 + 악보 파일 서명 URL. `requireRoom`을 통과한 roomId로만 호출한다. */
+export async function getSongWithUrl(
+  roomId: string,
+  songId: string,
+): Promise<SongWithUrl | null> {
+  if (!/^[0-9a-f-]{36}$/.test(songId)) return null;
+  const db = getServerSupabase();
+  const { data, error } = await db
+    .from("songs")
+    .select("id, title, position, file_type, page_count, file_path")
+    .eq("id", songId)
+    .eq("room_id", roomId)
+    .maybeSingle();
+  if (error) throw new Error("곡 조회 실패");
+  if (!data) return null;
+
+  const { data: signed, error: signErr } = await db.storage
+    .from(SCORES_BUCKET)
+    .createSignedUrl(data.file_path, SCORE_URL_TTL);
+  if (signErr || !signed) throw new Error("악보 URL 발급 실패");
+
+  return {
+    id: data.id,
+    title: data.title,
+    position: data.position,
+    file_type: data.file_type,
+    page_count: data.page_count,
+    url: signed.signedUrl,
+  };
 }
