@@ -91,7 +91,9 @@ export function JoinRoomForm({ code, roomRef }: { code?: string; roomRef?: strin
       ) : (
         <input
           name="code"
-          type="password"
+          // type=password는 브라우저가 사이트 비밀번호로 저장·자동완성해(다른 방에 옛 번호가 채워짐) 숫자 키패드도 안 뜬다
+          // → 텍스트 칸을 CSS로 가림
+          type="text"
           placeholder="방 번호 (숫자 4자리)"
           aria-label="방 번호"
           inputMode="numeric"
@@ -99,6 +101,7 @@ export function JoinRoomForm({ code, roomRef }: { code?: string; roomRef?: strin
           maxLength={4}
           required
           autoComplete="off"
+          style={{ WebkitTextSecurity: "disc" } as React.CSSProperties}
           autoFocus={!!roomRef}
           className={`${input} tracking-[0.5em]`}
         />

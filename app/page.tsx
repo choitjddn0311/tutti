@@ -40,7 +40,9 @@ async function RoomList() {
   let rooms;
   try {
     rooms = await listRooms();
-  } catch {
+  } catch (err) {
+    // DB 오류 외에 ROOM_SESSION_SECRET 누락(목록 참조값 생성 실패)도 여기로 온다 → 서버 로그로 원인 구분
+    console.error("방 목록 조회 실패:", err instanceof Error ? err.message : err);
     return <p className="text-sm text-red-600 dark:text-red-400">방 목록을 불러오지 못했습니다. 새로고침해 보세요.</p>;
   }
   if (rooms.length === 0) {

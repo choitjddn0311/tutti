@@ -36,7 +36,8 @@ function validateMember(
 }
 
 /**
- * 방 만들기. 비밀번호 없음 (2026-11-21 결정: 첫 화면 방 목록에서 번호로 바로 입장).
+ * 방 만들기. 별도 비밀번호 없이 랜덤 4자리 방 번호가 입장 비밀번호 역할 (2026-11-22 결정).
+ * 첫 화면 목록엔 이름만 보이고, 입장하려면 번호를 입력한다. 만든 사람은 방 안에서 번호를 확인해 공유.
  * 입장 쿠키는 닉네임·악기와 방 ID를 담아 계속 쓴다 (requireRoom).
  */
 export async function createRoom(_prev: FormState, form: FormData): Promise<FormState> {
@@ -73,8 +74,9 @@ export async function joinRoom(_prev: FormState, form: FormData): Promise<FormSt
   // 방 번호가 입장 비밀번호 역할 (2026-11-22). 목록에서 방을 골랐으면 그 방의 번호와 맞아야 한다
   const ref = field(form, "ref");
   const room = await findRoomByCode(code);
+  // 없는 번호와 틀린 번호를 같은 안내로 (어느 번호가 존재하는지 알려 주지 않게)
   if (!room || (ref && roomListRef(room.id) !== ref)) {
-    return fail(form, ref ? "방 번호가 맞지 않습니다." : "없는 방 번호입니다.");
+    return fail(form, "방 번호가 맞지 않습니다.");
   }
 
   await setRoomSession(room.code, { roomId: room.id, ...member });
