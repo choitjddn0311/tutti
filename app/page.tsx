@@ -1,7 +1,7 @@
 import { Suspense } from "react";
-import Link from "next/link";
 import { connection } from "next/server";
 import { CreateRoomForm, JoinRoomForm } from "@/components/room/RoomForms";
+import { RoomList as RoomListView } from "@/components/room/RoomList";
 import { listRooms } from "@/lib/rooms";
 
 export default function Home() {
@@ -14,6 +14,7 @@ export default function Home() {
 
       <section className="flex flex-col gap-3">
         <h2 className="text-lg font-medium">방 목록</h2>
+        <p className="-mt-2 text-sm text-zinc-500">방을 누르고 방 번호(4자리)를 입력하면 들어갈 수 있습니다.</p>
         <Suspense fallback={<p className="text-sm text-zinc-500">불러오는 중…</p>}>
           <RoomList />
         </Suspense>
@@ -21,7 +22,7 @@ export default function Home() {
 
       <section className="flex flex-col gap-4">
         <h2 className="text-lg font-medium">번호로 입장</h2>
-        <p className="-mt-2 text-sm text-zinc-500">목록에 없는 방(최근 100개 밖)은 번호로 들어갈 수 있습니다.</p>
+        <p className="-mt-2 text-sm text-zinc-500">목록에 없는 방(최근 100개 밖)도 번호로 들어갈 수 있습니다.</p>
         <JoinRoomForm />
       </section>
 
@@ -45,21 +46,5 @@ async function RoomList() {
   if (rooms.length === 0) {
     return <p className="text-sm text-zinc-500">아직 방이 없습니다. 아래에서 새 방을 만드세요.</p>;
   }
-  return (
-    <ul className="divide-y divide-zinc-200 rounded-lg border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
-      {rooms.map((r) => (
-        <li key={r.code}>
-          <Link
-            href={`/room/${r.code}`}
-            className="flex items-center gap-3 px-4 py-3 hover:bg-zinc-50 dark:hover:bg-zinc-900"
-          >
-            <span className="font-mono text-lg tracking-widest">{r.code}</span>
-            <span className="min-w-0 flex-1 truncate font-medium">{r.name}</span>
-            <span className="shrink-0 text-sm text-zinc-500">곡 {r.songCount}개</span>
-            <span className="shrink-0 text-zinc-400">›</span>
-          </Link>
-        </li>
-      ))}
-    </ul>
-  );
+  return <RoomListView rooms={rooms} />;
 }

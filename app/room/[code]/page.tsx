@@ -60,7 +60,7 @@ async function RoomContent({ code }: { code: string }) {
         <div>
           <h1 className="text-2xl font-semibold">{room.name}</h1>
           <p className="text-sm text-zinc-500">
-            방 코드 <span className="font-mono text-base tracking-widest text-zinc-900 dark:text-zinc-100">{room.code}</span>
+            방 번호(입장 비밀번호) <span className="font-mono text-base tracking-widest text-zinc-900 dark:text-zinc-100">{room.code}</span>
           </p>
         </div>
         <p className="text-sm text-zinc-600 dark:text-zinc-400">

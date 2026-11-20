@@ -1,6 +1,6 @@
 import "server-only";
 import { getServerSupabase } from "@/lib/supabase/server";
-import { readRoomSession, ROOM_CODE_RE, type RoomSession } from "@/lib/room-auth";
+import { readRoomSession, ROOM_CODE_RE, roomListRef, type RoomSession } from "@/lib/room-auth";
 import { SCORES_BUCKET } from "@/lib/upload-rules";
 
 export { ALLOWED_MIME, MAX_UPLOAD_BYTES, SCORES_BUCKET } from "@/lib/upload-rules";
@@ -33,18 +33,19 @@ export async function findRoomByCode(code: string): Promise<Room | null> {
   return data as Room | null;
 }
 
-export type RoomListItem = { code: string; name: string; songCount: number };
+/** 방 목록 항목. 방 번호는 입장 비밀번호 역할이라 목록에 넣지 않는다 (2026-11-22 사용자 결정) */
+export type RoomListItem = { ref: string; name: string; songCount: number };
 
-/** 첫 화면 방 목록 (최근 생성순). 비밀번호 없이 번호로 입장하는 방식(2026-11-21 결정) */
+/** 첫 화면 방 목록 (최근 생성순 100개). 번호 없이 이름·곡 수만 */
 export async function listRooms(): Promise<RoomListItem[]> {
   const { data, error } = await getServerSupabase()
     .from("rooms")
-    .select("code, name, songs!songs_room_id_fkey(count)")
+    .select("id, name, songs!songs_room_id_fkey(count)")
     .order("created_at", { ascending: false })
     .limit(100);
   if (error) throw new Error("방 목록 조회 실패");
-  return (data as { code: string; name: string; songs: { count: number }[] }[]).map((r) => ({
-    code: r.code,
+  return (data as { id: string; name: string; songs: { count: number }[] }[]).map((r) => ({
+    ref: roomListRef(r.id),
     name: r.name,
     songCount: r.songs?.[0]?.count ?? 0,
   }));
