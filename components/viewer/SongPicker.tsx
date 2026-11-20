@@ -43,23 +43,23 @@ export function SongPicker({
   }, [code]);
 
   return (
-    <div className="fixed inset-0 z-40 flex flex-col justify-end bg-black/30" onClick={onClose}>
+    <div className="fixed inset-0 z-40 flex flex-col justify-end bg-black/60" onClick={onClose}>
       <div
         role="dialog"
         aria-label="곡 목록"
-        className="max-h-[75dvh] overflow-y-auto rounded-t-2xl bg-white p-4 shadow-xl dark:bg-zinc-950"
+        className="mx-auto max-h-[75dvh] w-full max-w-lg overflow-y-auto rounded-t-[28px] border-x border-t border-line bg-surface p-5 pb-[max(20px,env(safe-area-inset-bottom))]"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-2 flex items-center justify-between">
-          <h2 className="font-semibold">셋리스트</h2>
-          <button type="button" onClick={onClose} className="rounded-md px-2 py-1 text-sm text-zinc-500">
+          <h2 className="text-lg font-bold">셋리스트</h2>
+          <button type="button" onClick={onClose} className="h-9 rounded-full bg-raised px-4 text-sm">
             닫기
           </button>
         </div>
         {songs.length === 0 ? (
-          <p className="py-4 text-sm text-zinc-500">곡 목록을 불러오지 못했습니다.</p>
+          <p className="py-4 text-sm text-muted">곡 목록을 불러오지 못했습니다.</p>
         ) : (
-          <ol className="divide-y divide-zinc-200 dark:divide-zinc-800">
+          <ol className="flex flex-col gap-1">
             {songs.map((s, i) => {
               const current = s.id === currentId;
               return (
@@ -71,13 +71,13 @@ export function SongPicker({
                       onClose();
                       if (!current) router.push(`/room/${code}/song/${s.id}`);
                     }}
-                    className={`flex w-full items-center gap-3 rounded-md px-2 py-3 text-left ${
-                      current ? "bg-zinc-100 dark:bg-zinc-900" : "hover:bg-zinc-50 dark:hover:bg-zinc-900"
+                    className={`flex min-h-14 w-full items-center gap-3 rounded-full px-4 text-left ${
+                      current ? "bg-fg text-canvas" : "hover:bg-raised"
                     }`}
                   >
-                    <span className="w-6 text-right text-sm text-zinc-500">{i + 1}</span>
-                    <span className="min-w-0 flex-1 truncate font-medium">{s.title}</span>
-                    <span className="shrink-0 text-xs text-zinc-500">
+                    <span className={`w-6 text-sm font-bold tabular-nums ${current ? "" : "text-muted"}`}>{i + 1}</span>
+                    <span className="min-w-0 flex-1 truncate font-semibold">{s.title}</span>
+                    <span className={`shrink-0 text-xs ${current ? "font-bold" : "text-muted"}`}>
                       {current ? "보는 중" : s.file_type === "pdf" ? `${s.page_count}쪽` : "이미지"}
                     </span>
                   </button>

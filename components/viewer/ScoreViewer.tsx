@@ -10,6 +10,8 @@ import { SyncControls } from "@/components/room/SyncBar";
 import type { Section } from "@/lib/rooms";
 import { PRESET_CUES } from "@/lib/upload-rules";
 import { CUE_COLOR } from "@/components/room/cueColors";
+import { btnIcon } from "@/components/ui";
+import { MoreIcon, PinIcon } from "@/components/icons";
 import { SongPicker, type PickerSong } from "./SongPicker";
 import { ImagePage } from "./ImagePage";
 import { PageOverlay, type PlaceMode } from "./PageOverlay";
@@ -20,7 +22,7 @@ const POINT_MS = 5000; // 위치 사인 표시 시간
 // pdf.js는 브라우저 API(DOMMatrix 등)를 쓰므로 서버 렌더링에서 제외
 const PdfPages = dynamic(() => import("./PdfPages"), {
   ssr: false,
-  loading: () => <p className="p-6 text-center text-sm text-zinc-500">뷰어 준비 중…</p>,
+  loading: () => <p className="p-6 text-center text-sm text-muted">뷰어 준비 중…</p>,
 });
 
 type Props = {
@@ -211,13 +213,10 @@ export function ScoreViewer({
   }, []);
 
   return (
-    <div className="flex h-dvh flex-col bg-zinc-100 dark:bg-zinc-900">
-      <header className="flex h-12 shrink-0 items-center gap-2 border-b border-zinc-200 bg-white px-2 dark:border-zinc-800 dark:bg-zinc-950">
-        <Link
-          href={backHref}
-          className="rounded-md px-2 py-1 text-sm text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800"
-        >
-          ← 셋리스트
+    <div className="flex h-dvh flex-col bg-canvas">
+      <header className="flex h-14 shrink-0 items-center gap-1.5 px-2">
+        <Link href={backHref} aria-label="셋리스트로" title="셋리스트로" className={btnIcon}>
+          ‹
         </Link>
         <h1 className="min-w-0 flex-1 text-center">
           {/* 제목을 누르면 셋리스트를 펼쳐 셋리스트 화면으로 나가지 않고 곡을 바꾼다 */}
@@ -226,23 +225,23 @@ export function ScoreViewer({
             onMouseDown={noFocus}
             onClick={() => setPickerOpen(true)}
             aria-label="곡 목록"
-            className="max-w-full truncate rounded-md px-2 py-1 font-medium hover:bg-zinc-100 dark:hover:bg-zinc-800"
+            className="h-11 max-w-full truncate rounded-full px-3 text-base font-bold hover:bg-raised"
           >
-            {title} <span className="text-zinc-400">▾</span>
+            {title} <span className="text-muted">▾</span>
           </button>
         </h1>
         <span
-          className={`hidden text-xs sm:inline ${wakeLock ? "text-emerald-600" : "text-zinc-400"}`}
+          className="hidden text-xs text-muted sm:inline"
           title={wakeLock ? "화면 꺼짐 방지 켜짐" : "화면 꺼짐 방지를 사용할 수 없음"}
         >
           {wakeLock ? "화면 유지" : "화면 유지 꺼짐"}
         </span>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 rounded-full bg-raised p-1">
           <NavButton label="이전 페이지" onClick={prev} disabled={page <= 1}>
             ‹
           </NavButton>
-          <span className="w-14 text-center text-sm tabular-nums" aria-live="polite">
-            {page} / {numPages}
+          <span className="min-w-12 text-center text-sm font-bold tabular-nums" aria-live="polite">
+            {page}/{numPages}
           </span>
           <NavButton label="다음 페이지" onClick={next} disabled={page >= numPages}>
             ›
@@ -250,12 +249,12 @@ export function ScoreViewer({
         </div>
       </header>
       {rt && (
-        <div className="flex h-10 shrink-0 items-center border-b border-zinc-200 bg-white px-3 dark:border-zinc-800 dark:bg-zinc-950">
+        <div className="flex h-10 shrink-0 items-center px-4">
           <SyncControls compact />
         </div>
       )}
       {mode !== "none" && (
-        <div className="flex h-10 shrink-0 items-center justify-between gap-2 bg-sky-600 px-3 text-sm text-white">
+        <div className="mx-2 mb-2 flex h-11 shrink-0 items-center justify-between gap-2 rounded-full bg-fg pl-5 pr-1.5 text-sm font-semibold text-canvas">
           <span>
             {mode === "point" ? "악보에서 보여줄 위치를 탭하세요" : `'${pendingLabel}' 섹션 위치를 탭하세요`}
           </span>
@@ -265,7 +264,7 @@ export function ScoreViewer({
               setMode("none");
               setPendingLabel(null);
             }}
-            className="rounded-md bg-white/20 px-2 py-1 text-xs"
+            className="h-8 rounded-full bg-canvas px-4 text-xs font-bold text-fg"
           >
             취소
           </button>
@@ -275,14 +274,14 @@ export function ScoreViewer({
         <button
           type="button"
           onClick={() => setSectionError(null)}
-          className="h-8 shrink-0 bg-red-600 px-3 text-left text-xs text-white"
+          className="mx-2 mb-2 h-9 shrink-0 rounded-full border border-danger px-4 text-left text-xs text-danger"
         >
           {sectionError} (닫기)
         </button>
       )}
 
       {/* 악보 영역: 왼쪽 절반 탭 = 이전, 오른쪽 절반 탭 = 다음 */}
-      <div className="relative min-h-0 flex-1 p-2">
+      <div className="relative min-h-0 flex-1 px-2 pb-2">
         <div ref={boxRef} className="h-full w-full">
           {fileType === "pdf" ? (
             <PdfPages url={url} page={page} box={box} onNumPages={onNumPages} overlay={overlayFor} />
@@ -312,13 +311,12 @@ export function ScoreViewer({
         )}
       </div>
 
-      {/* 악보 바로 아래 사인 줄: 큐는 한 번 탭으로 바로 보냄 */}
+      {/* 악보 바로 아래 사인 줄: 큐는 한 번 탭으로 바로 보냄. 한 줄 = 큐 + 위치 + 메시지 */}
       {rt && (
         <nav
           aria-label="사인"
-          // 큐 개수 + 📍 + … 만큼 한 줄로
-          style={{ gridTemplateColumns: `repeat(${PRESET_CUES.length + 2}, minmax(0, 1fr))` }}
-          className="grid h-14 shrink-0 gap-1.5 border-t border-zinc-200 bg-white px-2 py-1.5 dark:border-zinc-800 dark:bg-zinc-950"
+          style={{ gridTemplateColumns: `repeat(${PRESET_CUES.length}, minmax(0, 1fr)) 44px 44px` }}
+          className="grid shrink-0 gap-1.5 px-2 pb-[max(12px,env(safe-area-inset-bottom))] pt-1.5"
         >
           {PRESET_CUES.map((cue) => (
             <button
@@ -326,7 +324,9 @@ export function ScoreViewer({
               type="button"
               onMouseDown={noFocus}
               onClick={() => rt.sendCue(cue)}
-              className={`rounded-lg text-xs font-semibold text-white active:scale-95 sm:text-sm ${CUE_COLOR[cue] ?? "bg-zinc-700"}`}
+              className={`h-10 whitespace-nowrap rounded-full px-1 text-[13px] font-bold text-white active:scale-95 sm:text-sm ${
+                CUE_COLOR[cue] ?? "bg-raised"
+              }`}
             >
               {cue}
             </button>
@@ -341,20 +341,20 @@ export function ScoreViewer({
             }}
             aria-label="악보 위치 찍어 보여주기"
             aria-pressed={mode === "point"}
-            className={`rounded-lg border text-lg active:scale-95 ${
-              mode === "point" ? "border-sky-600 bg-sky-600 text-white" : "border-red-400"
+            className={`flex h-10 items-center justify-center rounded-full active:scale-95 ${
+              mode === "point" ? "bg-fg text-canvas" : "border border-fg text-fg"
             }`}
           >
-            📍
+            <PinIcon />
           </button>
           <button
             type="button"
             onMouseDown={noFocus}
             onClick={() => setPanelOpen(true)}
             aria-label="메시지·섹션"
-            className="rounded-lg border border-zinc-300 text-lg active:scale-95 dark:border-zinc-700"
+            className="flex h-10 items-center justify-center rounded-full border border-fg text-fg active:scale-95"
           >
-            …
+            <MoreIcon />
           </button>
         </nav>
       )}
@@ -404,7 +404,7 @@ function NavButton({
       aria-label={label}
       title={label}
       onMouseDown={noFocus}
-      className="h-9 w-9 rounded-md border border-zinc-300 text-lg leading-none disabled:opacity-30 dark:border-zinc-700"
+      className="flex h-9 w-9 items-center justify-center rounded-full text-lg leading-none hover:bg-canvas disabled:opacity-30"
       {...props}
     >
       {children}

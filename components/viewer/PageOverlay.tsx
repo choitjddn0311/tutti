@@ -2,6 +2,7 @@
 
 import type { Section } from "@/lib/rooms";
 import type { PointSignal } from "@/components/room/RoomRealtime";
+import { glassChip } from "@/components/ui";
 
 export type PlaceMode = "none" | "point" | "section";
 
@@ -39,13 +40,13 @@ export function PageOverlay({
       data-testid="page-overlay"
     >
       {mode !== "none" && (
-        <div className="pointer-events-none absolute inset-0 bg-sky-500/10 ring-2 ring-inset ring-sky-500" />
+        <div className="pointer-events-none absolute inset-0 bg-black/5 ring-2 ring-inset ring-black/70" />
       )}
 
       {here.map((s) => (
         <span
           key={s.id}
-          className="pointer-events-none absolute -translate-y-1/2 rounded-md bg-amber-400/90 px-1.5 py-0.5 text-xs font-bold text-zinc-900 shadow"
+          className={`pointer-events-none absolute -translate-y-1/2 px-2 py-0.5 text-xs font-bold ${glassChip}`}
           style={{ left: `${s.x * 100}%`, top: `${s.y * 100}%` }}
           data-section={s.label}
         >
@@ -60,9 +61,10 @@ export function PageOverlay({
           style={{ left: `${p.x * 100}%`, top: `${p.y * 100}%` }}
           data-point={p.from}
         >
-          <span className="absolute -inset-4 animate-ping rounded-full bg-red-500/40" />
-          <span className="relative block h-5 w-5 rounded-full border-2 border-white bg-red-500 shadow" />
-          <span className="absolute left-1/2 top-6 -translate-x-1/2 whitespace-nowrap rounded bg-red-600 px-1.5 text-xs font-medium text-white">
+          {/* 유리 링: 가운데 음표가 가려지지 않도록 안쪽은 거의 투명 */}
+          <span className="absolute -inset-3 animate-ping rounded-full border-2 border-black/40" />
+          <span className="relative block h-11 w-11 rounded-full border-2 border-black/80 bg-white/20 shadow-[0_0_0_4px_rgb(255_255_255/0.4),inset_0_1px_0_rgb(255_255_255/0.6)] backdrop-blur-[1.5px]" />
+          <span className={`absolute left-1/2 top-[54px] -translate-x-1/2 whitespace-nowrap px-2.5 py-0.5 text-xs font-bold ${glassChip}`}>
             {p.from}
           </span>
         </span>

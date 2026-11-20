@@ -4,9 +4,11 @@ import { useState } from "react";
 import { MAX_MESSAGE_LENGTH, MAX_SECTION_LABEL, PRESET_CUES } from "@/lib/upload-rules";
 import type { Section } from "@/lib/rooms";
 import { useRoomRealtime } from "./RoomRealtime";
+import { CUE_COLOR } from "./cueColors";
+import { btnOutline, btnPrimary, field } from "@/components/ui";
+import { PinIcon } from "@/components/icons";
 
-const btn =
-  "h-12 rounded-xl border border-zinc-300 text-base font-semibold active:scale-[0.98] dark:border-zinc-700";
+const btn = "h-12 rounded-full text-base font-bold text-white active:scale-[0.98]";
 
 /**
  * 사인 보내기 패널 (아래에서 올라오는 시트).
@@ -36,16 +38,16 @@ export function SignalPanel({
   if (!rt) return null;
 
   return (
-    <div className="fixed inset-0 z-40 flex flex-col justify-end bg-black/30" onClick={onClose}>
+    <div className="fixed inset-0 z-40 flex flex-col justify-end bg-black/60" onClick={onClose}>
       <div
         role="dialog"
         aria-label="사인 보내기"
-        className="max-h-[85dvh] overflow-y-auto rounded-t-2xl bg-white p-4 shadow-xl dark:bg-zinc-950"
+        className="mx-auto max-h-[85dvh] w-full max-w-lg overflow-y-auto rounded-t-[28px] border-x border-t border-line bg-surface p-5 pb-[max(20px,env(safe-area-inset-bottom))]"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="font-semibold">{showCues ? "사인 보내기" : "메시지 · 섹션"}</h2>
-          <button type="button" onClick={onClose} className="rounded-md px-2 py-1 text-sm text-zinc-500">
+          <h2 className="text-lg font-bold">{showCues ? "사인 보내기" : "메시지 · 섹션"}</h2>
+          <button type="button" onClick={onClose} className="h-9 rounded-full bg-raised px-4 text-sm">
             닫기
           </button>
         </div>
@@ -55,7 +57,7 @@ export function SignalPanel({
             <button
               key={cue}
               type="button"
-              className={btn}
+              className={`${btn} ${CUE_COLOR[cue] ?? "bg-raised"}`}
               onClick={() => {
                 rt.sendCue(cue);
                 onClose();
@@ -82,9 +84,9 @@ export function SignalPanel({
             maxLength={MAX_MESSAGE_LENGTH}
             placeholder="짧은 메시지"
             aria-label="메시지"
-            className="h-11 min-w-0 flex-1 rounded-lg border border-zinc-300 bg-transparent px-3 dark:border-zinc-700"
+            className={`${field} min-w-0 flex-1`}
           />
-          <button type="submit" className="h-11 rounded-lg bg-zinc-900 px-4 text-sm font-medium text-white dark:bg-zinc-100 dark:text-zinc-900">
+          <button type="submit" className={`${btnPrimary} shrink-0`}>
             보내기
           </button>
         </form>
@@ -93,17 +95,17 @@ export function SignalPanel({
           <>
             <button
               type="button"
-              className={`${btn} mt-3 w-full border-red-400 text-red-600`}
+              className={`${btnOutline} mt-3 h-12 w-full gap-2`}
               onClick={() => {
                 viewer.onStartPoint();
                 onClose();
               }}
             >
-              📍 악보 위치 찍어 보여주기
+              <PinIcon /> 악보 위치 찍어 보여주기
             </button>
 
-            <section className="mt-4 border-t border-zinc-200 pt-3 dark:border-zinc-800">
-              <h3 className="mb-2 text-sm font-medium text-zinc-500">섹션 라벨</h3>
+            <section className="mt-5 border-t border-line pt-4">
+              <h3 className="mb-2 text-sm text-muted">섹션 라벨</h3>
               <form
                 className="flex gap-2"
                 onSubmit={(e) => {
@@ -120,20 +122,20 @@ export function SignalPanel({
                   maxLength={MAX_SECTION_LABEL}
                   placeholder="예: A, 후렴, 코다"
                   aria-label="섹션 이름"
-                  className="h-11 min-w-0 flex-1 rounded-lg border border-zinc-300 bg-transparent px-3 dark:border-zinc-700"
+                  className={`${field} min-w-0 flex-1`}
                 />
                 <button
                   type="submit"
                   disabled={viewer.busy}
-                  className="h-11 rounded-lg border border-amber-500 px-3 text-sm font-medium text-amber-700 disabled:opacity-40 dark:text-amber-400"
+                  className={`${btnOutline} h-12 shrink-0`}
                 >
                   위치 지정
                 </button>
               </form>
               {viewer.sections.length > 0 && (
-                <ul className="mt-2 divide-y divide-zinc-200 dark:divide-zinc-800">
+                <ul className="mt-3 flex flex-col gap-1">
                   {viewer.sections.map((s) => (
-                    <li key={s.id} className="flex items-center gap-2 py-1.5">
+                    <li key={s.id} className="flex items-center gap-2 rounded-full bg-raised py-1 pl-1.5 pr-1">
                       <button
                         type="button"
                         className="min-w-0 flex-1 truncate text-left text-sm"
@@ -142,15 +144,15 @@ export function SignalPanel({
                           onClose();
                         }}
                       >
-                        <span className="rounded bg-amber-400/90 px-1.5 text-xs font-bold text-zinc-900">{s.label}</span>
-                        <span className="ml-2 text-zinc-500">{s.page}쪽으로 이동</span>
+                        <span className="rounded-full bg-fg px-2.5 py-0.5 text-xs font-bold text-canvas">{s.label}</span>
+                        <span className="ml-2 text-muted">{s.page}쪽으로 이동</span>
                       </button>
                       <button
                         type="button"
                         aria-label={`${s.label} 삭제`}
                         disabled={viewer.busy}
                         onClick={() => viewer.onDeleteSection(s.id)}
-                        className="h-8 w-8 rounded-md border border-zinc-300 text-xs disabled:opacity-30 dark:border-zinc-700"
+                        className="h-9 w-9 rounded-full bg-canvas text-xs disabled:opacity-30"
                       >
                         ✕
                       </button>

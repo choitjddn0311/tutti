@@ -28,7 +28,7 @@ export default function PdfPages({ url, page, box, onNumPages, overlay }: Props)
 
   if (error) {
     return (
-      <p className="p-6 text-center text-sm text-red-600 dark:text-red-400">
+      <p className="p-6 text-center text-sm text-danger">
         악보를 불러오지 못했습니다. 새로고침해 보세요.
       </p>
     );
@@ -52,7 +52,7 @@ export default function PdfPages({ url, page, box, onNumPages, overlay }: Props)
         onNumPages(pdf.numPages);
       }}
       onLoadError={() => setError(true)}
-      loading={<p className="p-6 text-center text-sm text-zinc-500">악보 불러오는 중…</p>}
+      loading={<p className="p-6 text-center text-sm text-muted">악보 불러오는 중…</p>}
       className="relative flex h-full w-full items-center justify-center"
     >
       {box.width > 0 && box.height > 0 &&
@@ -64,7 +64,7 @@ export default function PdfPages({ url, page, box, onNumPages, overlay }: Props)
               key={p}
               className={
                 p === current
-                  ? "relative bg-white shadow-sm"
+                  ? "relative bg-white"
                   : "pointer-events-none invisible absolute"
               }
               aria-hidden={p !== current}

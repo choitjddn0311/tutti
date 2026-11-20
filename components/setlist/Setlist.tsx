@@ -6,6 +6,7 @@ import { deleteSong, finalizeUpload, moveSong, prepareUpload } from "@/app/actio
 import { useRoomRealtime } from "@/components/room/RoomRealtime";
 import { countPdfPages } from "@/lib/pdf";
 import { getBrowserSupabase } from "@/lib/supabase/browser";
+import { btnIcon, btnPrimary, field } from "@/components/ui";
 import {
   ACCEPT_ATTR,
   ALLOWED_MIME,
@@ -23,7 +24,10 @@ export type SetlistSong = {
 
 
 export function Setlist({ code, songs }: { code: string; songs: SetlistSong[] }) {
-  const forgetSong = useRoomRealtime()?.forgetSong;
+  const rt = useRoomRealtime();
+  const forgetSong = rt?.forgetSong;
+  // 리더가 지금 합주 중인 곡 (리더가 없으면 표시하지 않음)
+  const playingId = rt?.leader ? rt.position.songId : null;
   const [error, setError] = useState<string | null>(null);
   const [busy, startTransition] = useTransition();
 
@@ -37,19 +41,27 @@ export function Setlist({ code, songs }: { code: string; songs: SetlistSong[] })
 
   return (
     <section className="flex flex-col gap-4">
-      <h2 className="text-lg font-medium">셋리스트</h2>
-
       {songs.length === 0 ? (
-        <p className="text-sm text-zinc-500">아직 곡이 없습니다. 악보를 올려 추가하세요.</p>
+        <p className="rounded-3xl border border-dashed border-line px-5 py-8 text-center text-sm text-muted">
+          아직 곡이 없습니다. 악보를 올려 추가하세요.
+        </p>
       ) : (
-        <ol className="divide-y divide-zinc-200 rounded-lg border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
-          {songs.map((song, i) => (
-            <li key={song.id} className="flex items-center gap-3 px-3 py-2">
-              <span className="w-6 text-right text-sm text-zinc-500">{i + 1}</span>
-              <Link href={`/room/${code}/song/${song.id}`} className="min-w-0 flex-1 rounded-md hover:bg-zinc-50 dark:hover:bg-zinc-900">
-                <p className="truncate font-medium">{song.title}</p>
-                <p className="text-xs text-zinc-500">
+        <ol className="flex flex-col gap-1.5">
+          {songs.map((song, i) => {
+            const playing = song.id === playingId;
+            return (
+            <li
+              key={song.id}
+              className={`flex min-h-16 items-center gap-3 rounded-full py-2 pl-5 pr-2.5 ${
+                playing ? "bg-canvas ring-1 ring-fg" : "ring-1 ring-line"
+              }`}
+            >
+              <span className="w-6 shrink-0 text-[15px] font-bold tabular-nums text-muted">{i + 1}</span>
+              <Link href={`/room/${code}/song/${song.id}`} className="min-w-0 flex-1 py-1">
+                <p className="truncate text-[17px] font-semibold">{song.title}</p>
+                <p className="text-xs text-muted">
                   {song.file_type === "pdf" ? `PDF · ${song.page_count}쪽` : "이미지"}
+                  {playing && " · 지금 합주 중"}
                 </p>
               </Link>
               <IconButton
@@ -80,13 +92,14 @@ export function Setlist({ code, songs }: { code: string; songs: SetlistSong[] })
                 ✕
               </IconButton>
             </li>
-          ))}
+            );
+          })}
         </ol>
       )}
 
       <UploadForm code={code} onError={setError} />
       {error && (
-        <p role="alert" className="text-sm text-red-600 dark:text-red-400">
+        <p role="alert" className="px-2 text-sm text-danger">
           {error}
         </p>
       )}
@@ -104,7 +117,7 @@ function IconButton({
       type="button"
       aria-label={label}
       title={label}
-      className="h-9 w-9 shrink-0 rounded-md border border-zinc-300 text-sm disabled:opacity-30 dark:border-zinc-700"
+      className={`${btnIcon} text-sm`}
       {...props}
     >
       {children}
@@ -228,14 +241,20 @@ function UploadForm({ code, onError }: { code: string; onError: (e: string | nul
 
   const multiple = count > 1;
   return (
-    <form onSubmit={upload} className="flex flex-col gap-2 rounded-lg border border-dashed border-zinc-300 p-3 dark:border-zinc-700">
+    <form onSubmit={upload} className="flex flex-col gap-3 rounded-[20px] bg-canvas p-4 sm:p-5">
+      <div>
+        <h3 className="text-base font-bold">악보 올리기</h3>
+        <p className="mt-1 text-xs text-muted">
+          PDF·PNG·JPEG·WebP, 파일당 20MB 이하 · 여러 개 선택 가능(최대 {MAX_BATCH}개, 파일 이름 순으로 추가)
+        </p>
+      </div>
       <input
         value={multiple ? "" : title}
         onChange={(e) => setTitle(e.target.value)}
         placeholder={multiple ? `파일 ${count}개 — 각 파일 이름이 곡 제목이 됩니다` : "곡 제목 (비우면 파일 이름)"}
         disabled={multiple || status !== null}
         maxLength={MAX_TITLE_LENGTH}
-        className="h-10 rounded-md border border-zinc-300 bg-transparent px-3 disabled:opacity-60 dark:border-zinc-700"
+        className={`${field} disabled:opacity-60`}
       />
       <input
         ref={fileRef}
@@ -245,15 +264,12 @@ function UploadForm({ code, onError }: { code: string; onError: (e: string | nul
         required
         disabled={status !== null}
         onChange={(e) => setCount(e.currentTarget.files?.length ?? 0)}
-        className="text-sm"
+        className="text-sm text-muted file:mr-3 file:h-10 file:rounded-full file:border file:border-fg file:bg-transparent file:px-4 file:text-sm file:font-semibold file:text-fg"
       />
-      <p className="text-xs text-zinc-500">
-        PDF·PNG·JPEG·WebP, 파일당 20MB 이하 · 여러 개 선택 가능(최대 {MAX_BATCH}개, 파일 이름 순으로 추가)
-      </p>
       <button
         type="submit"
         disabled={status !== null}
-        className="h-10 rounded-md bg-zinc-900 text-sm font-medium text-white disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900"
+        className={btnPrimary}
       >
         {status ?? (multiple ? `악보 ${count}개 올리기` : "악보 올리기")}
       </button>

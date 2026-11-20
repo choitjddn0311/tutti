@@ -31,7 +31,7 @@ export function ImagePage({
 
   if (error) {
     return (
-      <p className="p-6 text-center text-sm text-red-600 dark:text-red-400">
+      <p className="p-6 text-center text-sm text-danger">
         악보를 불러오지 못했습니다. 새로고침해 보세요.
       </p>
     );
@@ -45,7 +45,7 @@ export function ImagePage({
 
   return (
     <div className="flex h-full w-full items-center justify-center">
-      <div className="relative bg-white shadow-sm" style={size ?? { width: "100%", height: "100%" }}>
+      <div className="relative bg-white" style={size ?? { width: "100%", height: "100%" }}>
         {/* 서명 URL은 요청마다 바뀌어 next/image 최적화 대상이 아님 */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img

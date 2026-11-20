@@ -7,7 +7,7 @@ import { getSongWithUrl, listSectionsForSong, listSongs, requireRoom } from "@/l
 
 export default function SongPage({ params }: PageProps<"/room/[code]/song/[songId]">) {
   return (
-    <Suspense fallback={<p className="p-6 text-zinc-500">불러오는 중…</p>}>
+    <Suspense fallback={<p className="p-6 text-muted">불러오는 중…</p>}>
       {params.then(({ code, songId }) => (
         <SongContent code={code} songId={songId} />
       ))}
@@ -32,7 +32,7 @@ async function SongContent({ code, songId }: { code: string; songId: string }) {
     return (
       <main className="flex flex-1 flex-col items-center justify-center gap-4 p-6">
         <p>곡을 찾을 수 없습니다. 삭제되었을 수 있습니다.</p>
-        <Link href={`/room/${code}`} className="text-sm underline">
+        <Link href={`/room/${code}`} className="inline-flex h-11 items-center rounded-full border border-fg px-5 text-sm font-semibold">
           셋리스트로
         </Link>
       </main>

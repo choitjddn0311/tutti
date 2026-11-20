@@ -2,11 +2,10 @@
 
 import { useActionState, useEffect, useRef } from "react";
 import { createRoom, joinRoom, type FormState } from "@/app/actions/room";
+import { btnPrimary, field } from "@/components/ui";
 
-const input =
-  "h-11 w-full rounded-lg border border-zinc-300 bg-transparent px-3 text-base outline-none focus:border-zinc-900 dark:border-zinc-700 dark:focus:border-zinc-100";
-const primary =
-  "h-12 w-full rounded-lg bg-zinc-900 font-medium text-white disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900";
+const input = field;
+const primary = `${btnPrimary} w-full`;
 
 // 기기별로 마지막에 쓴 닉네임·악기를 기억해 다음 입장 때 미리 채운다 (편의 기능, 실패해도 무시)
 const MEMBER_KEY = "tutti:member";
@@ -56,7 +55,7 @@ function MemberFields({ state }: { state: FormState }) {
 
 function ErrorText({ state }: { state: FormState }) {
   return state?.error ? (
-    <p role="alert" className="text-sm text-red-600 dark:text-red-400">
+    <p role="alert" className="px-2 text-sm text-danger">
       {state.error}
     </p>
   ) : null;
@@ -103,7 +102,7 @@ export function JoinRoomForm({ code, roomRef }: { code?: string; roomRef?: strin
           autoComplete="off"
           style={{ WebkitTextSecurity: "disc" } as React.CSSProperties}
           autoFocus={!!roomRef}
-          className={`${input} tracking-[0.5em]`}
+          className={`${input} text-center text-lg font-bold tracking-[0.6em] placeholder:text-base placeholder:font-normal placeholder:tracking-normal`}
         />
       )}
       <MemberFields state={state} />

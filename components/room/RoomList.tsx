@@ -9,26 +9,41 @@ export function RoomList({ rooms }: { rooms: RoomListItem[] }) {
   const [open, setOpen] = useState<string | null>(null);
 
   return (
-    <ul className="divide-y divide-zinc-200 rounded-lg border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
-      {rooms.map((r) => (
-        <li key={r.ref}>
-          <button
-            type="button"
-            aria-expanded={open === r.ref}
-            onClick={() => setOpen(open === r.ref ? null : r.ref)}
-            className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-zinc-50 dark:hover:bg-zinc-900"
+    <ul className="flex flex-col gap-1.5">
+      {rooms.map((r) => {
+        const isOpen = open === r.ref;
+        return (
+          <li
+            key={r.ref}
+            className={`overflow-hidden rounded-3xl border transition-colors ${
+              isOpen ? "border-fg bg-canvas" : "border-line"
+            }`}
           >
-            <span className="min-w-0 flex-1 truncate font-medium">{r.name}</span>
-            <span className="shrink-0 text-sm text-zinc-500">곡 {r.songCount}개</span>
-            <span className="shrink-0 text-zinc-400">{open === r.ref ? "▴" : "▾"}</span>
-          </button>
-          {open === r.ref && (
-            <div className="border-t border-zinc-100 bg-zinc-50 px-4 py-3 dark:border-zinc-900 dark:bg-zinc-900/50">
-              <JoinRoomForm roomRef={r.ref} />
-            </div>
-          )}
-        </li>
-      ))}
+            <button
+              type="button"
+              aria-expanded={isOpen}
+              onClick={() => setOpen(isOpen ? null : r.ref)}
+              className="flex min-h-16 w-full items-center gap-4 px-5 py-3 text-left hover:bg-raised/60"
+            >
+              <span className="min-w-0 flex-1 truncate text-[17px] font-semibold">{r.name}</span>
+              <span className="shrink-0 text-sm text-muted">곡 {r.songCount}개</span>
+              <span
+                aria-hidden
+                className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-raised text-base transition-transform ${
+                  isOpen ? "rotate-180" : ""
+                }`}
+              >
+                ▾
+              </span>
+            </button>
+            {isOpen && (
+              <div className="px-4 pb-4">
+                <JoinRoomForm roomRef={r.ref} />
+              </div>
+            )}
+          </li>
+        );
+      })}
     </ul>
   );
 }

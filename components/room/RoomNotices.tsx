@@ -1,7 +1,8 @@
 "use client";
 
-import { CUE_COLOR } from "./cueColors";
+import { CUE_GLASS } from "./cueColors";
 import { useRoomRealtime } from "./RoomRealtime";
+import { glassChip } from "@/components/ui";
 
 
 /**
@@ -18,17 +19,18 @@ export function RoomNotices() {
   return (
     <>
       {cue && (
-        <div className="pointer-events-none fixed inset-x-0 top-16 z-50 flex justify-center px-4">
+        <div className="pointer-events-none fixed inset-x-0 top-28 z-50 flex justify-center px-4">
           <button
             type="button"
             onClick={() => dismissNotice(cue.id)}
             role="alert"
-            className={`pointer-events-auto rounded-2xl px-8 py-4 text-center text-white shadow-lg ${
-              CUE_COLOR[cue.text] ?? "bg-zinc-800"
+            // 글래스: 악보 위에 떠도 아래 악보가 비쳐 보이게
+            className={`glass pointer-events-auto rounded-full px-10 py-3.5 text-center text-white [text-shadow:0_1px_2px_rgb(0_0_0/0.35)] ${
+              CUE_GLASS[cue.text] ?? "bg-black/55"
             }`}
           >
             <span className="block text-4xl font-bold tracking-tight sm:text-5xl">{cue.text}</span>
-            <span className="mt-1 block text-sm opacity-80">{cue.from}</span>
+            <span className="mt-0.5 block text-sm opacity-90">{cue.from}</span>
           </button>
         </div>
       )}
@@ -43,10 +45,10 @@ export function RoomNotices() {
                 if (n.kind === "point" && n.songId && n.text.startsWith("다른 곡")) openSong(n.songId);
               }}
               role="status"
-              className="pointer-events-auto max-w-md rounded-full bg-zinc-900/90 px-4 py-2 text-sm text-white shadow-md dark:bg-zinc-100/90 dark:text-zinc-900"
+              className={`pointer-events-auto max-w-md px-5 py-2.5 text-sm ${glassChip}`}
             >
               <strong className="mr-1">{n.from}</strong>
-              {n.kind === "point" ? `📍 ${n.text}` : n.text}
+              {n.kind === "point" ? `위치 · ${n.text}` : n.text}
             </button>
           ))}
         </div>
