@@ -12,9 +12,10 @@ import {
   SCORES_BUCKET,
 } from "@/lib/upload-rules";
 
-type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string };
+/** fatal: 이 파일만의 문제가 아니라 다음 파일도 실패할 오류 (예: 입장이 풀림) → 여러 개 올리기를 멈춘다 */
+type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string; fatal?: boolean };
 
-const NOT_JOINED = { ok: false, error: "방에 입장한 상태가 아닙니다. 다시 입장하세요." } as const;
+const NOT_JOINED = { ok: false, error: "방에 입장한 상태가 아닙니다. 다시 입장하세요.", fatal: true } as const;
 
 /** 1단계: 업로드 검증 후 서명 업로드 URL 발급. 파일 본문은 서버를 거치지 않는다. */
 export async function prepareUpload(
@@ -70,7 +71,11 @@ export async function finalizeUpload(
   }
 
   const { data: info, error: infoErr } = await storage.info(input.path);
-  if (infoErr || !info) return { ok: false, error: "업로드된 파일을 찾을 수 없습니다." };
+  if (infoErr || !info) {
+    // 확인에 실패해도 올라간 파일이 남지 않게 지운다 (경로는 위에서 이 방 것으로 검증됨)
+    await storage.remove([input.path]).catch(() => {});
+    return { ok: false, error: "업로드된 파일을 확인하지 못했습니다." };
+  }
   const mime = info.contentType ? ALLOWED_MIME[info.contentType] : undefined;
   // prepareUpload에서 승인한 형식(경로 확장자)과 실제 업로드 형식이 같아야 한다
   if (!mime || mime.ext !== pathMatch[1] || !info.size || info.size > MAX_UPLOAD_BYTES) {
