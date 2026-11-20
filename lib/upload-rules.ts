@@ -11,3 +11,10 @@ export const ALLOWED_MIME: Record<string, { type: "pdf" | "image"; ext: string }
   "image/webp": { type: "image", ext: "webp" },
 };
 export const ACCEPT_ATTR = Object.keys(ALLOWED_MIME).join(",");
+
+/** 섹션 라벨 최대 길이 (서버·브라우저 공용) */
+export const MAX_SECTION_LABEL = 20;
+/** 텍스트 메시지 최대 길이 */
+export const MAX_MESSAGE_LENGTH = 60;
+/** 프리셋 큐 (PROJECT.md 확정, 2026-11-21) */
+export const PRESET_CUES = ["처음으로", "한 번 더", "엔딩", "스톱"] as const;

@@ -12,13 +12,15 @@ type Props = {
   /** 페이지를 맞출 영역 크기(px) */
   box: { width: number; height: number };
   onNumPages: (n: number) => void;
+  /** 현재 페이지 위에 겹칠 레이어 (섹션·위치 사인). 페이지와 정확히 같은 크기의 상자 안에 그려진다 */
+  overlay?: (page: number) => React.ReactNode;
 };
 
 /**
  * PDF 렌더링. 현재 페이지와 앞뒤 1쪽을 미리 그려 두어(invisible) 넘김이 즉시 보이게 한다.
  * 각 페이지는 영역 안에 통째로 보이도록(contain) 크기를 맞춘다.
  */
-export default function PdfPages({ url, page, box, onNumPages }: Props) {
+export default function PdfPages({ url, page, box, onNumPages, overlay }: Props) {
   const [numPages, setNumPages] = useState(0);
   // 페이지별 가로/세로 비율 (첫 렌더 후 알게 됨). 모르면 A4 비율로 가정.
   const [aspects, setAspects] = useState<Record<number, number>>({});
@@ -78,6 +80,7 @@ export default function PdfPages({ url, page, box, onNumPages }: Props) {
                   setAspects((prev) => (prev[p] === a ? prev : { ...prev, [p]: a }));
                 }}
               />
+              {p === current && overlay?.(p)}
             </div>
           );
         })}

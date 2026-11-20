@@ -3,9 +3,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { useRoomRealtime } from "@/components/room/RoomRealtime";
+import { addSection, deleteSection, getSections } from "@/app/actions/sections";
+import { useRoomRealtime, type PointSignal } from "@/components/room/RoomRealtime";
+import { SignalPanel } from "@/components/room/SignalPanel";
 import { SyncControls } from "@/components/room/SyncBar";
+import type { Section } from "@/lib/rooms";
+import { ImagePage } from "./ImagePage";
+import { PageOverlay, type PlaceMode } from "./PageOverlay";
 import { useElementSize, usePageKeys, useWakeLock } from "./hooks";
+
+const POINT_MS = 5000; // 위치 사인 표시 시간
 
 // pdf.js는 브라우저 API(DOMMatrix 등)를 쓰므로 서버 렌더링에서 제외
 const PdfPages = dynamic(() => import("./PdfPages"), {
@@ -20,9 +27,20 @@ type Props = {
   fileType: "pdf" | "image";
   pageCount: number;
   backHref: string;
+  code: string;
+  initialSections: Section[];
 };
 
-export function ScoreViewer({ songId, title, url, fileType, pageCount, backHref }: Props) {
+export function ScoreViewer({
+  songId,
+  title,
+  url,
+  fileType,
+  pageCount,
+  backHref,
+  code,
+  initialSections,
+}: Props) {
   const rt = useRoomRealtime();
   // 새로고침·늦은 입장: 리더의 현재 위치(DB 값)가 이 곡이면 그 쪽에서 시작
   const [page, setPage] = useState(() =>
@@ -31,15 +49,6 @@ export function ScoreViewer({ songId, title, url, fileType, pageCount, backHref 
   const [numPages, setNumPages] = useState(fileType === "pdf" ? pageCount : 1);
   const [boxRef, box] = useElementSize<HTMLDivElement>();
   const wakeLock = useWakeLock();
-
-  const [imgError, setImgError] = useState(false);
-  const imgRef = useRef<HTMLImageElement>(null);
-
-  // 서버 렌더된 <img>가 하이드레이션 전에 실패하면 onError가 호출되지 않으므로 마운트 시 한 번 확인
-  useEffect(() => {
-    const img = imgRef.current;
-    if (img?.complete && img.naturalWidth === 0) setImgError(true);
-  }, []);
 
   const prev = useCallback(() => setPage((p) => Math.max(1, p - 1)), []);
   const next = useCallback(() => setPage((p) => Math.min(numPages, p + 1)), [numPages]);
@@ -65,6 +74,85 @@ export function ScoreViewer({ songId, title, url, fileType, pageCount, backHref 
       setPage(Math.max(1, max ? Math.min(pos.page, max) : pos.page));
     });
   }, [subscribe, songId]);
+
+  // ---------- 5단계: 섹션 라벨·위치 사인 ----------
+  const [sections, setSections] = useState<Section[]>(initialSections);
+  const [points, setPoints] = useState<PointSignal[]>([]);
+  const [mode, setMode] = useState<PlaceMode>("none");
+  const [pendingLabel, setPendingLabel] = useState<string | null>(null);
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [sectionError, setSectionError] = useState<string | null>(null);
+  const pageRef = useRef(page);
+  useEffect(() => {
+    pageRef.current = page;
+  });
+
+  // 위치 사인 받기: 이 곡의 지금 보는 쪽이면 그리고 true (아니면 Provider가 알림으로 띄움)
+  const subscribePoints = rt?.subscribePoints;
+  useEffect(() => {
+    if (!subscribePoints) return;
+    return subscribePoints((p) => {
+      if (p.songId !== songId || p.page !== pageRef.current) return false;
+      setPoints((list) => [...list.filter((x) => x.id !== p.id), p]);
+      setTimeout(() => setPoints((list) => list.filter((x) => x.id !== p.id)), POINT_MS);
+      return true;
+    });
+  }, [subscribePoints, songId]);
+
+  // 다른 사람이 이 곡의 섹션을 바꾸면 다시 불러온다
+  const subscribeSections = rt?.subscribeSections;
+  useEffect(() => {
+    if (!subscribeSections) return;
+    return subscribeSections((changed) => {
+      if (changed !== songId) return;
+      void getSections(code, songId).then(setSections);
+    });
+  }, [subscribeSections, songId, code]);
+
+  const onPlace = useCallback(
+    (x: number, y: number) => {
+      if (mode === "point") {
+        rt?.sendPoint(songId, page, x, y);
+        setMode("none");
+      } else if (mode === "section" && pendingLabel) {
+        setMode("none");
+        setBusy(true);
+        setSectionError(null);
+        void addSection(code, { songId, label: pendingLabel, page, x, y })
+          .then((r) => {
+            if (r.ok) {
+              setSections(r.sections);
+              rt?.notifySectionsChanged(songId);
+            } else setSectionError(r.error);
+          })
+          .finally(() => {
+            setBusy(false);
+            setPendingLabel(null);
+          });
+      }
+    },
+    [mode, pendingLabel, rt, songId, page, code],
+  );
+
+  const removeSection = useCallback(
+    (id: string) => {
+      setBusy(true);
+      void deleteSection(code, songId, id)
+        .then((r) => {
+          if (r.ok) {
+            setSections(r.sections);
+            rt?.notifySectionsChanged(songId);
+          } else setSectionError(r.error);
+        })
+        .finally(() => setBusy(false));
+    },
+    [code, songId, rt],
+  );
+
+  const overlayFor = (p: number) => (
+    <PageOverlay page={p} sections={sections} points={points} mode={mode} onPlace={onPlace} />
+  );
 
   // 실제 PDF 쪽수가 DB 값과 다르면 실제 값을 따르고, 범위를 넘은 현재 쪽을 당겨온다
   const onNumPages = useCallback((n: number) => {
@@ -102,33 +190,55 @@ export function ScoreViewer({ songId, title, url, fileType, pageCount, backHref 
         </div>
       </header>
       {rt && (
-        <div className="flex h-10 shrink-0 items-center border-b border-zinc-200 bg-white px-3 dark:border-zinc-800 dark:bg-zinc-950">
+        <div className="flex h-10 shrink-0 items-center justify-between gap-2 border-b border-zinc-200 bg-white px-3 dark:border-zinc-800 dark:bg-zinc-950">
           <SyncControls compact />
+          <button
+            type="button"
+            onClick={() => setPanelOpen(true)}
+            className="h-8 shrink-0 rounded-full bg-zinc-900 px-3 text-xs font-medium text-white dark:bg-zinc-100 dark:text-zinc-900"
+          >
+            사인
+          </button>
         </div>
+      )}
+      {mode !== "none" && (
+        <div className="flex h-10 shrink-0 items-center justify-between gap-2 bg-sky-600 px-3 text-sm text-white">
+          <span>
+            {mode === "point" ? "악보에서 보여줄 위치를 탭하세요" : `'${pendingLabel}' 섹션 위치를 탭하세요`}
+          </span>
+          <button
+            type="button"
+            onClick={() => {
+              setMode("none");
+              setPendingLabel(null);
+            }}
+            className="rounded-md bg-white/20 px-2 py-1 text-xs"
+          >
+            취소
+          </button>
+        </div>
+      )}
+      {sectionError && (
+        <button
+          type="button"
+          onClick={() => setSectionError(null)}
+          className="h-8 shrink-0 bg-red-600 px-3 text-left text-xs text-white"
+        >
+          {sectionError} (닫기)
+        </button>
       )}
 
       {/* 악보 영역: 왼쪽 절반 탭 = 이전, 오른쪽 절반 탭 = 다음 */}
       <div className="relative min-h-0 flex-1 p-2">
         <div ref={boxRef} className="h-full w-full">
           {fileType === "pdf" ? (
-            <PdfPages url={url} page={page} box={box} onNumPages={onNumPages} />
-          ) : imgError ? (
-            <p className="p-6 text-center text-sm text-red-600 dark:text-red-400">
-              악보를 불러오지 못했습니다. 새로고침해 보세요.
-            </p>
+            <PdfPages url={url} page={page} box={box} onNumPages={onNumPages} overlay={overlayFor} />
           ) : (
-            // 서명 URL은 요청마다 바뀌어 next/image 최적화 대상이 아님
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={url}
-              alt={title}
-              ref={imgRef}
-              onError={() => setImgError(true)}
-              className="h-full w-full bg-white object-contain"
-            />
+            <ImagePage url={url} alt={title} box={box} overlay={overlayFor(1)} />
           )}
         </div>
-        {numPages > 1 && (
+        {/* 놓기 모드에서는 탭이 페이지 위치 지정에 쓰이므로 넘김 영역을 끈다 */}
+        {numPages > 1 && mode === "none" && (
           // touch-manipulation: 빠른 연속 탭이 더블탭 확대로 처리되지 않게
           <div className="absolute inset-0 flex touch-manipulation" aria-hidden>
             <button
@@ -148,6 +258,24 @@ export function ScoreViewer({ songId, title, url, fileType, pageCount, backHref 
           </div>
         )}
       </div>
+
+      {panelOpen && (
+        <SignalPanel
+          onClose={() => setPanelOpen(false)}
+          viewer={{
+            page,
+            sections,
+            busy,
+            onStartPoint: () => setMode("point"),
+            onStartSection: (label) => {
+              setPendingLabel(label);
+              setMode("section");
+            },
+            onJump: (p) => setPage(Math.max(1, Math.min(p, numPages))),
+            onDeleteSection: removeSection,
+          }}
+        />
+      )}
     </div>
   );
 }

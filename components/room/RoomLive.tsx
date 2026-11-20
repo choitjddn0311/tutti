@@ -1,12 +1,15 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { useRoomRealtime } from "./RoomRealtime";
+import { SignalPanel } from "./SignalPanel";
 import { MemberList, SyncControls } from "./SyncBar";
 
 /** 셋리스트 화면 상단: 리더·따라가기 조작, 현재 합주 위치, 접속자 */
 export function RoomLive({ songs }: { songs: { id: string; title: string }[] }) {
   const rt = useRoomRealtime();
+  const [panelOpen, setPanelOpen] = useState(false);
   if (!rt) return null;
   const { position, code, leader } = rt;
   // 리더가 있을 때만 '지금 위치' 표시 (리더가 없으면 DB 값은 지난 합주 위치일 수 있음)
@@ -15,7 +18,17 @@ export function RoomLive({ songs }: { songs: { id: string; title: string }[] }) 
 
   return (
     <section className="flex flex-col gap-4 rounded-lg border border-zinc-200 p-3 dark:border-zinc-800">
-      <SyncControls />
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <SyncControls />
+        <button
+          type="button"
+          onClick={() => setPanelOpen(true)}
+          className="h-8 rounded-full bg-zinc-900 px-3 text-xs font-medium text-white dark:bg-zinc-100 dark:text-zinc-900"
+        >
+          사인
+        </button>
+      </div>
+      {panelOpen && <SignalPanel onClose={() => setPanelOpen(false)} />}
       {current && (
         <Link
           href={`/room/${code}/song/${current.id}`}

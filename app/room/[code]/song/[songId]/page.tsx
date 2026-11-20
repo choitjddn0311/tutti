@@ -3,7 +3,7 @@ import { connection } from "next/server";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { ScoreViewer } from "@/components/viewer/ScoreViewer";
-import { getSongWithUrl, requireRoom } from "@/lib/rooms";
+import { getSongWithUrl, listSectionsForSong, requireRoom } from "@/lib/rooms";
 
 export default function SongPage({ params }: PageProps<"/room/[code]/song/[songId]">) {
   return (
@@ -22,7 +22,10 @@ async function SongContent({ code, songId }: { code: string; songId: string }) {
   const auth = await requireRoom(code);
   if (!auth) redirect(`/room/${code}`); // 미입장 → 방 입장 화면
 
-  const song = await getSongWithUrl(auth.room.id, songId);
+  const [song, sections] = await Promise.all([
+    getSongWithUrl(auth.room.id, songId),
+    listSectionsForSong(auth.room.id, songId),
+  ]);
   if (!song) {
     return (
       <main className="flex flex-1 flex-col items-center justify-center gap-4 p-6">
@@ -44,6 +47,8 @@ async function SongContent({ code, songId }: { code: string; songId: string }) {
       fileType={song.file_type}
       pageCount={song.page_count}
       backHref={`/room/${code}`}
+      code={code}
+      initialSections={sections}
     />
   );
 }
