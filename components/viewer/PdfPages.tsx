@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
 import { configurePdfWorker } from "@/lib/pdf";
+import { ScoreError } from "./ScoreError";
 
 configurePdfWorker(pdfjs);
 
@@ -27,11 +28,7 @@ export default function PdfPages({ url, page, box, onNumPages, overlay }: Props)
   const [error, setError] = useState(false);
 
   if (error) {
-    return (
-      <p className="p-6 text-center text-sm text-danger">
-        악보를 불러오지 못했습니다. 새로고침해 보세요.
-      </p>
-    );
+    return <ScoreError onRetry={() => setError(false)} />;
   }
 
   // 실제 쪽수를 알기 전에는 페이지를 그리지 않는다 (DB 쪽수가 틀렸을 때 없는 쪽 요청 → pdf.js 예외 방지).

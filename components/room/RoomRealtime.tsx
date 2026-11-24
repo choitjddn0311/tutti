@@ -123,6 +123,7 @@ export function useRoomRealtime(): RoomRealtime | null {
 
 const PERSIST_DELAY = 400; // ms — 빠른 연속 넘김은 마지막 위치만 저장
 const RECONNECT_DELAY = 2000; // ms — 서버가 채널을 닫았을 때 재연결 대기
+const PROBE_DELAY = 3000; // ms — 네트워크 복귀·화면 켜짐 후 소켓 응답을 기다리는 시간
 const NAV_RETRY_MS = 3000; // ms — 같은 곡으로의 이동을 다시 시도하기까지
 
 // ---------- 브라우저 저장소 (편의 기능이므로 실패해도 무시) ----------
@@ -222,26 +223,24 @@ export function RoomRealtimeProvider({
   /** 리더로서 마지막으로 알린 위치 — 늦게 들어온 사람의 요청(position_request)에 답할 때 쓴다 */
   const myPos = useRef<LeaderPos | null>(null);
 
-  /** 리더 차수 변경. 리더를 잃거나 새로 맡으면 예전 위치는 버린다 (다시 맡을 때 옛 위치로 끌고 가지 않게) */
   const persistTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   /** 아직 저장 안 된 리더 위치: 직접 내려놓으면 바로 저장, 다른 사람이 리더를 가져가면 버린다 */
   const pendingPersist = useRef<(() => void) | null>(null);
 
-  const setEpoch = useCallback(
-    (v: number | null, opts?: { flush?: boolean }) => {
-      setEpochState(v);
-      myPos.current = null;
-      if (persistTimer.current) {
-        clearTimeout(persistTimer.current);
+  /** 리더 위치를 DB에 저장 (연속 넘김은 마지막만). 실패하면 재연결 때 다시 저장한다 */
+  const schedulePersist = useCallback(
+    (songId: string, page: number) => {
+      if (persistTimer.current) clearTimeout(persistTimer.current);
+      const persist = () => void setPosition(code, songId, page).catch(() => {});
+      pendingPersist.current = persist;
+      persistTimer.current = setTimeout(() => {
         persistTimer.current = null;
-        // 다른 사람이 리더를 가져간 경우엔 버린다 (새 리더의 위치를 옛 위치로 덮어쓰지 않게)
-        if (opts?.flush) pendingPersist.current?.();
-      }
-      pendingPersist.current = null;
-      storageSet("session", epochKey, v === null ? null : String(v));
+        pendingPersist.current = null;
+        persist();
+      }, PERSIST_DELAY);
     },
-    [epochKey],
+    [code],
   );
 
   const follow = useSyncExternalStore(
@@ -251,7 +250,11 @@ export function RoomRealtimeProvider({
   );
 
   const [members, setMembers] = useState<Member[]>([]);
-  const [connected, setConnected] = useState(false);
+  /** 채널 구독됨 (Presence track 가능) */
+  const [subscribed, setSubscribed] = useState(false);
+  /** 이번 채널에서 접속자 목록을 받음. 그 전의 members는 끊기기 전 목록이라 리더 판단에 쓰면 안 된다 */
+  const [synced, setSynced] = useState(false);
+  const connected = subscribed && synced;
   const [position, setPositionState] = useState<Position>(initialPosition);
   /** 서버가 채널을 닫으면 증가 → 채널 effect가 다시 연결 */
   const [reconnectTick, setReconnectTick] = useState(0);
@@ -273,6 +276,25 @@ export function RoomRealtimeProvider({
   useEffect(() => {
     latest.current = { me, follow, isLeader, leaderId: leader?.clientId, position, pathname };
   });
+
+  /** 리더 차수 변경. 리더를 잃거나 새로 맡으면 예전 위치는 버린다 (다시 맡을 때 옛 위치로 끌고 가지 않게) */
+  const setEpoch = useCallback(
+    (v: number | null, opts?: { flush?: boolean }) => {
+      setEpochState(v);
+      // 다음 렌더의 effect를 기다리지 않고 반영한다 (자식인 뷰어의 effect가 먼저 실행돼 옛 차수로 알리는 것 방지)
+      latest.current.me = { ...latest.current.me, epoch: v };
+      myPos.current = null;
+      if (persistTimer.current) {
+        clearTimeout(persistTimer.current);
+        persistTimer.current = null;
+        // 다른 사람이 리더를 가져간 경우엔 버린다 (새 리더의 위치를 옛 위치로 덮어쓰지 않게)
+        if (opts?.flush) pendingPersist.current?.();
+      }
+      pendingPersist.current = null;
+      storageSet("session", epochKey, v === null ? null : String(v));
+    },
+    [epochKey],
+  );
 
   const channelRef = useRef<RealtimeChannel | null>(null);
   /** 마지막으로 반영한 리더 위치의 순서 (초기 DB 값은 가장 오래된 것으로 취급) */
@@ -438,6 +460,7 @@ export function RoomRealtimeProvider({
         config: { presence: { key: clientId }, broadcast: { self: false } },
       });
       channel = ch;
+      let resynced = false;
       ch.on("presence", { event: "sync" }, () => {
         const list = Object.values(ch.presenceState<Member>())
           .map((metas) => metas[metas.length - 1])
@@ -449,6 +472,7 @@ export function RoomRealtimeProvider({
             epoch: epoch ?? null,
           }));
         setMembers(list);
+        setSynced(true);
         for (const m of list) maxEpochSeen.current = Math.max(maxEpochSeen.current, m.epoch ?? 0);
 
         const mine = latest.current.me;
@@ -471,6 +495,17 @@ export function RoomRealtimeProvider({
         if (top && top.clientId !== mine.clientId && top.clientId !== prevLeader) {
           if (top.epoch !== prevLeaderEpoch) knownOrder.current = { epoch: -1, seq: -1 };
           requestPosition();
+        }
+        // 끊겼다 다시 연결된 리더: 끊긴 동안 넘긴 위치는 아무도 못 받았을 수 있으므로 다시 알리고 저장한다.
+        // 그사이 다른 사람이 리더를 맡았는지 알 수 있는 첫 presence sync에서 판단한다.
+        // (따라가는 쪽 presence에는 변화가 없을 수 있어 position_request만으로는 부족하다)
+        if (!resynced) {
+          resynced = true;
+          const pos = myPos.current;
+          if (latest.current.isLeader && pos) {
+            sendBroadcast("page_change", { ...pos, from: mine.clientId });
+            schedulePersist(pos.songId, pos.page);
+          }
         }
       })
         .on("broadcast", { event: "page_change" }, onPosition)
@@ -514,11 +549,12 @@ export function RoomRealtimeProvider({
         .subscribe((status) => {
           if (cancelled) return;
           if (status === "SUBSCRIBED") {
-            // track은 아래 [me, connected] effect 한 곳에서만 (Presence 갱신 제한 30초 5회)
-            setConnected(true);
+            // track은 아래 [me, subscribed] effect 한 곳에서만 (Presence 갱신 제한 30초 5회)
+            setSubscribed(true);
           } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
             // 서버가 채널을 닫았거나 연결 오류 → 잠시 후 새 채널로 다시 연결
-            setConnected(false);
+            setSubscribed(false);
+            setSynced(false);
             if (!retryTimer) {
               retryTimer = setTimeout(() => setReconnectTick((n) => n + 1), RECONNECT_DELAY);
             }
@@ -535,7 +571,8 @@ export function RoomRealtimeProvider({
       cancelled = true;
       if (retryTimer) clearTimeout(retryTimer);
       channelRef.current = null;
-      setConnected(false);
+      setSubscribed(false);
+      setSynced(false);
       if (channel) {
         const p = supabase.removeChannel(channel).catch(() => {});
         removing.set(topic, p);
@@ -544,12 +581,34 @@ export function RoomRealtimeProvider({
         });
       }
     };
-  }, [roomId, clientId, reconnectTick, setEpoch, syncToLeader, acceptLeaderPos, requestPosition, sendBroadcast, forgetLocal, pushNotice, handlePoint]);
+  }, [roomId, clientId, reconnectTick, setEpoch, syncToLeader, acceptLeaderPos, requestPosition, sendBroadcast, forgetLocal, pushNotice, handlePoint, schedulePersist]);
+
+  // 화면이 다시 켜지거나 네트워크가 돌아오면 소켓이 살아 있는지 바로 확인한다.
+  // sendHeartbeat는 앞선 heartbeat의 답이 아직 없으면 소켓을 끊고 다시 연결한다 → 두 번 부르면 죽은 소켓만 걸러진다.
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const probe = () => {
+      if (document.visibilityState !== "visible" || timer) return;
+      const { realtime } = getBrowserSupabase();
+      void realtime.sendHeartbeat();
+      timer = setTimeout(() => {
+        timer = null;
+        void realtime.sendHeartbeat();
+      }, PROBE_DELAY);
+    };
+    window.addEventListener("online", probe);
+    document.addEventListener("visibilitychange", probe);
+    return () => {
+      if (timer) clearTimeout(timer);
+      window.removeEventListener("online", probe);
+      document.removeEventListener("visibilitychange", probe);
+    };
+  }, []);
 
   // 내 정보(이름·리더 차수)가 바뀔 때만 다시 track — 자주 부르면 Presence 갱신 제한(30초 5회)에 걸린다
   useEffect(() => {
-    if (connected) void channelRef.current?.track(me);
-  }, [me, connected]);
+    if (subscribed) void channelRef.current?.track(me);
+  }, [me, subscribed]);
 
   const takeLead = useCallback(() => {
     const max = members.reduce(
@@ -602,16 +661,9 @@ export function RoomRealtimeProvider({
         ...leaderPos,
         from: clientId,
       } satisfies PositionEvent);
-      if (persistTimer.current) clearTimeout(persistTimer.current);
-      const persist = () => void setPosition(code, songId, page);
-      pendingPersist.current = persist;
-      persistTimer.current = setTimeout(() => {
-        persistTimer.current = null;
-        pendingPersist.current = null;
-        persist();
-      }, PERSIST_DELAY);
+      schedulePersist(songId, page);
     },
-    [clientId, code, seqKey, sendBroadcast],
+    [clientId, seqKey, sendBroadcast, schedulePersist],
   );
 
   /** 곡 삭제를 모두에게 알리고 내 쪽 위치도 잊는다 */

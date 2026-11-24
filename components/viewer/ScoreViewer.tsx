@@ -284,9 +284,10 @@ export function ScoreViewer({
       <div className="relative min-h-0 flex-1 px-2 pb-2">
         <div ref={boxRef} className="h-full w-full">
           {fileType === "pdf" ? (
-            <PdfPages url={url} page={page} box={box} onNumPages={onNumPages} overlay={overlayFor} />
+            // key=url: 서명 URL을 새로 받으면 실패 상태를 버리고 다시 불러온다
+            <PdfPages key={url} url={url} page={page} box={box} onNumPages={onNumPages} overlay={overlayFor} />
           ) : (
-            <ImagePage url={url} alt={title} box={box} overlay={overlayFor(1)} />
+            <ImagePage key={url} url={url} alt={title} box={box} overlay={overlayFor(1)} />
           )}
         </div>
         {/* 놓기 모드에서는 탭이 페이지 위치 지정에 쓰이므로 넘김 영역을 끈다 */}

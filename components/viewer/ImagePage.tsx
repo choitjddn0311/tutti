@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { ScoreError } from "./ScoreError";
 
 /**
  * 이미지 악보 1쪽. 영역 안에 비율을 유지해 통째로 맞추고(contain),
@@ -30,11 +31,7 @@ export function ImagePage({
   }, []);
 
   if (error) {
-    return (
-      <p className="p-6 text-center text-sm text-danger">
-        악보를 불러오지 못했습니다. 새로고침해 보세요.
-      </p>
-    );
+    return <ScoreError onRetry={() => setError(false)} />;
   }
 
   let size: { width: number; height: number } | undefined;
