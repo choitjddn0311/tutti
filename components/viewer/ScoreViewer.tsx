@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
+import { getScoreUrl } from "@/app/actions/score";
 import { addSection, deleteSection, getSections } from "@/app/actions/sections";
 import { useRoomRealtime, type PointSignal } from "@/components/room/RoomRealtime";
 import { SignalPanel } from "@/components/room/SignalPanel";
@@ -212,6 +213,15 @@ export function ScoreViewer({
     setPage((p) => Math.min(p, n));
   }, []);
 
+  // 다시 시도: 서명 URL을 새로 받았을 때만 뷰어를 다시 마운트한다 (실시간 연결·현재 쪽은 유지)
+  const [score, setScore] = useState<{ url: string | null; attempt: number }>({ url: null, attempt: 0 });
+  const retryScore = useCallback(async () => {
+    const fresh = await getScoreUrl(code, songId).catch(() => null);
+    if (!fresh) return false;
+    setScore((s) => ({ url: fresh, attempt: s.attempt + 1 }));
+    return true;
+  }, [code, songId]);
+
   return (
     <div className="flex h-dvh flex-col bg-canvas">
       <header className="flex h-14 shrink-0 items-center gap-1.5 px-2">
@@ -284,9 +294,9 @@ export function ScoreViewer({
       <div className="relative min-h-0 flex-1 px-2 pb-2">
         <div ref={boxRef} className="h-full w-full">
           {fileType === "pdf" ? (
-            <PdfPages url={url} page={page} box={box} onNumPages={onNumPages} overlay={overlayFor} />
+            <PdfPages key={score.attempt} url={score.url ?? url} onRetry={retryScore} page={page} box={box} onNumPages={onNumPages} overlay={overlayFor} />
           ) : (
-            <ImagePage url={url} alt={title} box={box} overlay={overlayFor(1)} />
+            <ImagePage key={score.attempt} url={score.url ?? url} onRetry={retryScore} alt={title} box={box} overlay={overlayFor(1)} />
           )}
         </div>
         {/* 놓기 모드에서는 탭이 페이지 위치 지정에 쓰이므로 넘김 영역을 끈다 */}

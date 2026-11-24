@@ -18,3 +18,6 @@ export const MAX_SECTION_LABEL = 20;
 export const MAX_MESSAGE_LENGTH = 60;
 /** 프리셋 큐 (PROJECT.md 확정, 2026-11-21) */
 export const PRESET_CUES = ["처음으로", "한 번 더", "엔딩", "스톱"] as const;
+
+/** 3시간 — 이보다 오래된 리더 위치는 지난 합주로 본다 (2026-11-24 사용자 결정) */
+export const POSITION_TTL_MS = 3 * 60 * 60 * 1000;

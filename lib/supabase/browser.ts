@@ -22,6 +22,8 @@ export function getBrowserSupabase(): SupabaseClient {
 
   client = createClient(url, publishableKey, {
     auth: { persistSession: false, autoRefreshToken: false },
+    // 응답 없는 소켓을 빨리 알아채고 재연결한다 (기본 25초)
+    realtime: { heartbeatIntervalMs: 10_000 },
   });
   return client;
 }

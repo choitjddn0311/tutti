@@ -50,6 +50,17 @@ export function SyncControls({ compact = false }: { compact?: boolean }) {
             {follow ? "따라가는 중" : "따로 보기"}
           </button>
         )}
+        {/* 합주 중 리더가 사라지면 셋리스트로 나가지 않고 이어받는다 */}
+        {!leader && connected && (
+          <button
+            type="button"
+            onMouseDown={(e) => e.preventDefault()} // 포커스가 남으면 페달(Space)이 버튼을 누른다
+            onClick={takeLead}
+            className="h-8 shrink-0 rounded-full border border-fg px-3 text-xs font-semibold"
+          >
+            리더 맡기
+          </button>
+        )}
       </div>
     );
   }

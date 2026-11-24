@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import { connection } from "next/server";
 import { RoomRealtimeProvider } from "@/components/room/RoomRealtime";
-import { requireRoom } from "@/lib/rooms";
+import { currentPosition, requireRoom } from "@/lib/rooms";
 
 /**
  * 방 안의 모든 화면(셋리스트·뷰어)이 실시간 채널 하나를 공유하도록 레이아웃에서 연결한다.
@@ -29,7 +29,7 @@ async function RealtimeGate({ code, children }: { code: string; children: React.
       roomId={room.id}
       nickname={session.nickname}
       instrument={session.instrument}
-      initialPosition={{ songId: room.current_song_id, page: room.current_page }}
+      initialPosition={currentPosition(room)}
     >
       {children}
     </RoomRealtimeProvider>
