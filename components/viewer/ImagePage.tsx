@@ -11,11 +11,13 @@ export function ImagePage({
   url,
   alt,
   box,
+  onRetry,
   overlay,
 }: {
   url: string;
   alt: string;
   box: { width: number; height: number };
+  onRetry: () => Promise<boolean>;
   overlay?: React.ReactNode;
 }) {
   const imgRef = useRef<HTMLImageElement>(null);
@@ -31,7 +33,7 @@ export function ImagePage({
   }, []);
 
   if (error) {
-    return <ScoreError onRetry={() => setError(false)} />;
+    return <ScoreError onRetry={onRetry} />;
   }
 
   let size: { width: number; height: number } | undefined;

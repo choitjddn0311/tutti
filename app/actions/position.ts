@@ -14,7 +14,7 @@ export async function setPosition(
   code: string,
   songId: string,
   page: number,
-): Promise<{ ok: boolean }> {
+): Promise<{ ok: boolean; /** 곡이 삭제됨 */ gone?: boolean }> {
   const auth = await requireRoom(code);
   if (!auth) return { ok: false };
   if (
@@ -27,13 +27,14 @@ export async function setPosition(
   }
 
   const db = getServerSupabase();
-  const { data: song } = await db
+  const { data: song, error: songErr } = await db
     .from("songs")
     .select("id")
     .eq("id", songId)
     .eq("room_id", auth.room.id)
     .maybeSingle();
-  if (!song) return { ok: false };
+  if (songErr) return { ok: false };
+  if (!song) return { ok: false, gone: true };
 
   const { error } = await db
     .from("rooms")

@@ -1,7 +1,7 @@
 import "server-only";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { readRoomSession, ROOM_CODE_RE, roomListRef, type RoomSession } from "@/lib/room-auth";
-import { SCORES_BUCKET } from "@/lib/upload-rules";
+import { POSITION_TTL_MS, SCORES_BUCKET } from "@/lib/upload-rules";
 
 export { ALLOWED_MIME, MAX_UPLOAD_BYTES, SCORES_BUCKET } from "@/lib/upload-rules";
 
@@ -21,8 +21,6 @@ export type Song = {
   file_type: "pdf" | "image";
   page_count: number;
 };
-
-const POSITION_TTL_MS = 3 * 60 * 60 * 1000; // 3시간 — 이보다 오래된 위치는 지난 합주로 본다 (2026-11-24 사용자 결정)
 
 /** 이번 합주의 현재 위치. 저장한 지 오래됐으면 위치 없음 */
 export function currentPosition(room: Room): { songId: string | null; page: number } {
