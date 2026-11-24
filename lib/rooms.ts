@@ -11,6 +11,7 @@ export type Room = {
   name: string;
   current_song_id: string | null;
   current_page: number;
+  position_updated_at: string | null;
 };
 
 export type Song = {
@@ -21,12 +22,21 @@ export type Song = {
   page_count: number;
 };
 
+const POSITION_TTL_MS = 3 * 60 * 60 * 1000; // 3시간 — 이보다 오래된 위치는 지난 합주로 본다 (2026-11-24 사용자 결정)
+
+/** 이번 합주의 현재 위치. 저장한 지 오래됐으면 위치 없음 */
+export function currentPosition(room: Room): { songId: string | null; page: number } {
+  const at = room.position_updated_at ? Date.parse(room.position_updated_at) : 0;
+  if (Date.now() - at > POSITION_TTL_MS) return { songId: null, page: 1 };
+  return { songId: room.current_song_id, page: room.current_page };
+}
+
 /** 방 번호로 방 조회 (입장용) */
 export async function findRoomByCode(code: string): Promise<Room | null> {
   if (!ROOM_CODE_RE.test(code)) return null;
   const { data, error } = await getServerSupabase()
     .from("rooms")
-    .select("id, code, name, current_song_id, current_page")
+    .select("id, code, name, current_song_id, current_page, position_updated_at")
     .eq("code", code)
     .maybeSingle();
   if (error) throw new Error("방 조회 실패");
@@ -62,7 +72,7 @@ export async function requireRoom(
   if (!session) return null;
   const { data, error } = await getServerSupabase()
     .from("rooms")
-    .select("id, code, name, current_song_id, current_page")
+    .select("id, code, name, current_song_id, current_page, position_updated_at")
     .eq("code", code)
     .maybeSingle();
   if (error) throw new Error("방 조회 실패");

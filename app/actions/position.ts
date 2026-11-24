@@ -37,7 +37,11 @@ export async function setPosition(
 
   const { error } = await db
     .from("rooms")
-    .update({ current_song_id: songId, current_page: page })
+    .update({
+      current_song_id: songId,
+      current_page: page,
+      position_updated_at: new Date().toISOString(),
+    })
     .eq("id", auth.room.id);
   return { ok: !error };
 }
